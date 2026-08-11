@@ -1,0 +1,4 @@
+return {
+  summary = "National dex data: species 152-1025, dex entries and modern typing.",
+  author = "HemaLens",
+}
