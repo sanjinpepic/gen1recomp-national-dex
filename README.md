@@ -44,7 +44,7 @@ so an engine built on top does not have to re-source any of it.
 
 ## Installing
 
-Download the `.zip` from [Releases](../../releases) and import it through the
+Download the `.zip` and import it through the
 launcher: **MODS → Import mod .zip**.
 
 Then enable it and set its options:
@@ -61,10 +61,8 @@ ours to redistribute. The only images here are two 922-byte flat-grey `?`
 placeholders we generated, which exist because the engine throws when a species'
 art file is missing.
 
-Species art comes from the player's own copy. The companion
-[Universal Sprite Registry](https://github.com/sanjinpepic) mod resolves art from
-a local dump you supply yourself. Without it, beyond-151 species show the
-placeholder — the dex, stats, forms and API all work regardless.
+Species art comes from the player's own copy. Without it, beyond-151 species show the
+placeholder, the dex, stats, forms and API all work regardless.
 
 ## What is in here
 
