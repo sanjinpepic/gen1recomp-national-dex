@@ -1,6 +1,6 @@
 # National Dex
 
-A Pokédex backend for [Gen1Recomp](https://github.com/ChrisMcElroy/gen1recomp):
+A Pokédex backend for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp):
 all 1025 species with modern typing, the 18-type chart, 326 alternate forms, and
 a read API other mods can call for the data.
 
@@ -66,9 +66,19 @@ placeholder, the dex, stats, forms and API all work regardless.
 
 ## What is in here
 
-`mod/` is the mod itself, exactly as it ships — the Lua source and the generated
-species data. The `.zip` at the root is that same folder packaged for the
-launcher's importer. Nothing else: no build scripts, no tests, no examples.
+`mod/` is the mod itself, exactly as it ships — the Lua source, the generated
+species data, [`mod/CHANGELOG.md`](mod/CHANGELOG.md) and one test suite,
+[`mod/tests/national_dex_test.lua`](mod/tests/national_dex_test.lua). The suite
+runs against a Gen1Recomp checkout with this mod installed at
+`mods/national_dex`:
+
+```sh
+luajit mods/national_dex/tests/national_dex_test.lua
+```
+
+It is listed in `mod/.modkitignore`, so `modkit pack` leaves it out of the
+archive. The `.zip` at the root is that same folder packaged for the launcher's
+importer. Nothing else: no build scripts, no examples.
 
 ## Credits
 
@@ -77,7 +87,7 @@ community-run Pokémon API. Stats, typing, learnsets, abilities, evolutions, egg
 groups and EV yields all originate there. Thank you to its maintainers and
 contributors for making it freely available.
 
-Built for [Gen1Recomp](https://github.com/ChrisMcElroy/gen1recomp), a LÖVE2D
+Built for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp), a LÖVE2D
 recompilation of Pokémon Red.
 
 ## Licence

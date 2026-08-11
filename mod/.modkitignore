@@ -1,0 +1,5 @@
+# Paths modkit pack leaves out of the distributed archive.  Matched as exact
+# relative paths, not prefixes or globs -- a new suite needs its own line here
+# or pack carries it, and a test requiring engine modules is a private-require
+# finding against the archive, which pack treats as fatal.
+tests/national_dex_test.lua
