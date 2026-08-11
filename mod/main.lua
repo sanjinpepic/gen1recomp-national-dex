@@ -48,7 +48,12 @@ return function(mod)
   local national = nationalDex
     and loadOptionalSibling(mod, "data/species/generated/national.lua") or nil
   if (mod.options:get("type_chart") == "modern" or nationalDex) and chart then
-    loadSibling(mod, "src/nationaldex.lua")(mod, chart, national)
+    -- src/gen2shape.lua answers which generation is booting and reshapes a
+    -- record for it.  Handed in rather than required from nationaldex.lua
+    -- because a mod's own files load as chunks through mod:read, not through
+    -- package.path -- require() cannot see a sibling of this mod.
+    local gen2shape = loadSibling(mod, "src/gen2shape.lua")
+    loadSibling(mod, "src/nationaldex.lua")(mod, chart, national, gen2shape)
   end
 
   -- mod.exports: the integration surface for another mod (a Showdown-style

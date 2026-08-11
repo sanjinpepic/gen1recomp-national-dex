@@ -30,6 +30,35 @@ Version headings match `manifest.json`'s `version`.
   species and 326 forms was being filed, sorted and searched as a numbers
   tweak in both the gallery and the manager.
 
+## 0.9.0
+
+### Added
+
+- Gold. The dex now loads on Pokémon Gold as well as Red, Blue and Yellow,
+  and `manifest.games` says so. Gold is not Gen 1 spelled differently: the
+  engine validates the same `pokemon` registry against a second schema there,
+  one that splits `baseStats.special` into `specialAttack`/`specialDefense`,
+  folds `level1Moves` into `levelMoves`, renames `frontSize` to `picSize` and
+  points an evolution at `into` rather than `species`. A Gen 1 record offered
+  to that schema fails on the missing `special`, and because every
+  registration here is guarded, the mod would have loaded on Gold with no
+  species and no complaint. `src/gen2shape.lua` reshapes each record first.
+
+### Changed
+
+- Gold's cart describes #1–251 itself, and registering an id the ROM import
+  already holds throws rather than being skipped, so those species receive
+  their modern typing as patches instead — deliberately without their base
+  stats, which on Gen 2 are live battle numbers the engine reads directly and
+  replacing them would quietly rebalance a playthrough. A Gold boot patches
+  251 and registers 1,100 where a Red boot patches 151 and registers 1,200.
+- Which game is running is read from the `generation` constant the ROM import
+  stamps, never from a version allow-list.
+- The Pokédex STATS page and the party summary box do not install on Gold,
+  whose screens are different classes entirely. They detect that and stand
+  down, so the dex data, the type chart and the read API all work there while
+  those two displays wait for a Gen 2 equivalent.
+
 ## 0.8.0
 
 ### Added

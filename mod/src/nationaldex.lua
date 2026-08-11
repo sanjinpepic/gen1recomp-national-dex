@@ -71,9 +71,12 @@ local function anchorArt(mod, record)
   end
 end
 
-return function(mod, chart, national)
+return function(mod, chart, national, gen2shape)
   local patched, registered, texts, skipped = 0, 0, 0, 0
   local firstError
+  -- On Gold the same registry validates a DIFFERENT record shape and the
+  -- cart has already claimed #1-251; src/gen2shape.lua carries both facts.
+  local gen2 = gen2shape ~= nil and gen2shape.generation(mod) == 2
 
   local function safe(fn)
     local ok, err = pcall(fn)
@@ -119,7 +122,8 @@ return function(mod, chart, national)
       end
     end
     if type(national.register) == "table" then
-      local dexSize = 151
+      -- Gold's own roster is 251, so its dex list already starts there.
+      local dexSize = gen2 and gen2shape.ROM_DEX_MAX or 151
       -- national.register mixes two record shapes: the 874 beyond-151
       -- SPECIES (record.dex is their own, never-before-seen national dex
       -- number, up to 1025) and the 326 alternate-FORM records
@@ -143,8 +147,24 @@ return function(mod, chart, national)
           dexSize = record.dex
         end
         safe(function() anchorArt(mod, record) end)
-        if safe(function() mod.content.pokemon:register(id, record) end) then
-          registered = registered + 1
+        -- On Gold #152-251 arrive with the player's cart, before any mod
+        -- runs, so this mod has nothing to register for them -- only modern
+        -- typing to offer, the same deal the Kanto 151 get on both games.
+        -- Claiming an id the ROM import already holds is not a registration
+        -- this mod is entitled to make, and their base stats are live Gen 2
+        -- battle numbers rather than the collapsed Special that Gen 1 leaves
+        -- this mod free to reinterpret.
+        if gen2 and gen2shape.romOwned(record) then
+          if safe(function()
+            mod.content.pokemon:patch(id, gen2shape.romPatch(record))
+          end) then
+            patched = patched + 1
+          end
+        else
+          local payload = gen2 and gen2shape.record(record) or record
+          if safe(function() mod.content.pokemon:register(id, payload) end) then
+            registered = registered + 1
+          end
         end
       end
       -- the dex list and its number width come from constants; both were
@@ -157,7 +177,9 @@ return function(mod, chart, national)
     end
   end
 
-  print(("[nationaldex] chart=%s patched=%d registered=%d text=%d skipped=%d%s")
-    :format(chart and "modern" or "none", patched, registered, texts,
-      skipped, firstError and (" (first error: " .. firstError .. ")") or ""))
+  print(("[nationaldex] gen=%d chart=%s patched=%d registered=%d text=%d "
+    .. "skipped=%d%s")
+    :format(gen2 and 2 or 1, chart and "modern" or "none", patched,
+      registered, texts, skipped,
+      firstError and (" (first error: " .. firstError .. ")") or ""))
 end
