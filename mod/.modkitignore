@@ -3,3 +3,4 @@
 # or pack carries it, and a test requiring engine modules is a private-require
 # finding against the archive, which pack treats as fatal.
 tests/national_dex_test.lua
+tests/national_dex_gen2_test.lua

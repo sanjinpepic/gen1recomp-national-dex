@@ -5,10 +5,10 @@ return {
   summary = "The full 1025-species national dex, modern typing, 326 forms and a read API.",
   author = "sanjinpepic",
   contact = "https://github.com/sanjinpepic",
-  tags = { "content", "dex", "ui", "tool" },
+  tags = { "content", "dex", "ui", "tool", "gen2" },
   differences = {
     changed = {
-      "the type chart becomes the modern 18-type one when TYPE CHART: MODERN or the dex is on",
+      "TYPE CHART picks an effectiveness era and it wins over the cart's own chart, so Ghost really is 2x on Psychic under MODERN",
       "the Pokedex entry page gains a STATS page on DOWN and form browsing on LEFT/RIGHT",
       "the party STATUS screen splits Special into Sp.Atk and Sp.Def when STATS: MODERN",
       "dexSize and dexDigits grow so the dex list can page past 151",
@@ -17,7 +17,8 @@ return {
       "species 1-1025 with dex entries, typing, base stats, learnsets and evolutions",
       "326 alternate forms, nested inside their base species rather than given dex rows",
       "the DARK, STEEL and FAIRY types, and 324 modern matchups",
-      "mod options: NATIONAL DEX, TYPE CHART and STATS",
+      "mod options: NATIONAL DEX, TYPE CHART (GEN 1 / GEN 2 / MODERN eras) and STATS",
+      "Gold as well as Red/Blue/Yellow: records are reshaped for the second schema the pokemon registry validates against there",
       "exports apiVersion / statsByDex / statsBySpecies / listSpecies / formsOf / splitStats",
     },
     known = {
@@ -25,8 +26,8 @@ return {
       "the Sp.Atk/Sp.Def split is data and display only -- battle damage still reads the ROM's collapsed Special",
       "NATIONAL DEX defaults to OFF, so a freshly enabled install changes nothing until the option is set",
       "records carry moves, abilities and EV yields this engine cannot execute; they are there for mods built on top",
-      "GHOST>PSYCHIC, POISON>BUG and BUG>POISON keep their Gen 1 values: the engine registers those rows first and register cannot displace them, so the modern chart lands in 321 of its 324 matchups",
-      "Gen 2 is neither claimed nor verified -- the manifest declares no games key, so Gold will not load this unforced",
+      "on Gold the Pokedex STATS page and the party summary box do not install at all -- those screens are different classes there and a Gen 2 equivalent is not written yet",
+      "Gold's #1-251 keep the cart's base stats on purpose: on Gen 2 those are live battle numbers, so only the typing is patched over them",
     },
   },
   credits = {

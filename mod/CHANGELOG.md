@@ -3,10 +3,16 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
-## Unreleased
+## 0.10.1
+
 
 ### Added
 
+- `tests/national_dex_gen2_test.lua`. `manifest.games` claims Gold, and the
+  loader gates on that claim, so the suite asserts the mod's *state* rather
+  than its error count — a gate skip is deliberately not an error, and a mod
+  that never ran a line reports zero of them. Its own file because the
+  engine's builtin registries register once per process.
 - `tests/national_dex_test.lua`, which loads the mod through the headless
   loader with the dex switched on and asserts what it registers: the
   1025-species roster, Charizard's megas reporting No. 006 rather than the
@@ -29,6 +35,48 @@ Version headings match `manifest.json`'s `version`.
   for `TWEAK`, which means small data edits; a mod that registers 1025
   species and 326 forms was being filed, sorted and searched as a numbers
   tweak in both the gallery and the manager.
+- The load tally goes through `mod.log` instead of `print`, so it carries the
+  `[national_dex]` prefix and reaches the launcher's log pane — where a player
+  is sent when a mod misbehaves, and where a bare `print` never arrives. The
+  skipped count now gets its own `warn` line naming the first cause, because a
+  record the schema refused is a species the player will not find.
+- A missing or broken sibling module is reported and skipped rather than
+  asserted. `assert` inside a mod callback takes the whole load down with it;
+  each of the five call sites can degrade to something still usable, so they
+  do, and the message names the file and what reinstalling would fix.
+- `manifest.github` points at the release repo, which is what the launcher's
+  auto-update and *Other versions* panes read.
+
+### Fixed
+
+- The header comment claimed "no hooks, no engine seam" while `src/dexpage.lua`
+  and `src/summarystats.lua` patch two menu classes in memory — which is what
+  the manifest's `engine_internals` permission is for.
+
+## 0.10.0
+
+### Added
+
+- `TYPE CHART` offers `GEN 1`, `GEN 2` and `MODERN`, each a generated table
+  derived from PokeAPI's own per-generation damage relations rather than typed
+  out by hand. They differ exactly where the real games do: Gen 1 to Gen 2
+  moves Ghost/Psychic 0x to 2x, Bug/Poison 2x to 0.5x, Poison/Bug 2x to 1x and
+  Ice/Fire 1x to 0.5x; Gen 2 to modern only lifts Steel's resistance to Ghost
+  and Dark.
+
+### Fixed
+
+- The chart you pick is now the chart you play. Rows were registered with
+  `:register`, which throws on an id the engine has already claimed, and every
+  throw was swallowed by the same guard that stops one bad record failing the
+  load. Since the engine registers its own chart first, every matchup between
+  two types the cart already knew kept its original multiplier — under MODERN,
+  Ghost against Psychic stayed at Gen 1's 0x rather than 2x, and only the ~99
+  rows touching DARK, STEEL or FAIRY ever took. Rows now claim an existing id
+  with `:override`, taking applied matchups from 318 of 324 to all 324.
+- Choosing the era the cart already is costs nothing — it is skipped — except
+  with the national dex on, where all 18 type records must exist regardless or
+  every species past #151 carries a type the chart cannot resolve.
 
 ## 0.9.0
 

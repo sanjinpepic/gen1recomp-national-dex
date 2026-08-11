@@ -11,8 +11,11 @@ a read API other mods can call for the data.
 
 - **Species 1–1025.** Names, dex entries, typing, base stats, level-up
   learnsets, evolutions, growth and catch rates.
-- **The modern 18-type chart**, with 324 matchups. DARK, STEEL and FAIRY cannot
-  exist on a Gen 1 chart, and national-dex typing needs them.
+- **A GEN 1 / GEN 2 / MODERN type chart**, 324 matchups each, derived from
+  PokeAPI's per-generation damage relations. The era you pick wins over the
+  cart's own chart, so under MODERN Ghost really is 2x on Psychic. DARK,
+  STEEL and FAIRY cannot exist on a Gen 1 chart, and national-dex typing
+  needs them.
 - **326 alternate forms** — megas, gigantamax, regional variants — as forms
   *inside* their base species' entry, never as separate dex rows. Mega Charizard
   X and Y are both No. 006, exactly as in the real games.
@@ -50,7 +53,7 @@ launcher: **MODS → Import mod .zip**.
 Then enable it and set its options:
 
 - `NATIONAL DEX: ON`
-- `TYPE CHART: MODERN` — required for beyond-151 typing to make sense
+- `TYPE CHART: GEN 1 | GEN 2 | MODERN` — the effectiveness era to play by
 - `STATS: GEN 1 | MODERN` — display only; MODERN splits Special into Sp.Atk and
   Sp.Def on the dex and party screens
 
@@ -67,16 +70,19 @@ placeholder, the dex, stats, forms and API all work regardless.
 ## What is in here
 
 `mod/` is the mod itself, exactly as it ships — the Lua source, the generated
-species data, [`mod/CHANGELOG.md`](mod/CHANGELOG.md) and one test suite,
-[`mod/tests/national_dex_test.lua`](mod/tests/national_dex_test.lua). The suite
-runs against a Gen1Recomp checkout with this mod installed at
-`mods/national_dex`:
+species data, [`mod/CHANGELOG.md`](mod/CHANGELOG.md) and two test suites under
+[`mod/tests/`](mod/tests). They run against a Gen1Recomp checkout with this mod
+installed at `mods/national_dex`:
 
 ```sh
 luajit mods/national_dex/tests/national_dex_test.lua
 ```
 
-It is listed in `mod/.modkitignore`, so `modkit pack` leaves it out of the
+```sh
+luajit mods/national_dex/tests/national_dex_gen2_test.lua
+```
+
+Both are listed in `mod/.modkitignore`, so the packagers leave them out of the
 archive. The `.zip` at the root is that same folder packaged for the launcher's
 importer. Nothing else: no build scripts, no examples.
 

@@ -71,12 +71,12 @@ local function anchorArt(mod, record)
   end
 end
 
-return function(mod, chart, national, gen2shape)
-  local patched, registered, texts, skipped = 0, 0, 0, 0
+return function(mod, chart, national, gen2shape, generation, era)
+  local patched, registered, texts, skipped, charted = 0, 0, 0, 0, 0
   local firstError
   -- On Gold the same registry validates a DIFFERENT record shape and the
   -- cart has already claimed #1-251; src/gen2shape.lua carries both facts.
-  local gen2 = gen2shape ~= nil and gen2shape.generation(mod) == 2
+  local gen2 = gen2shape ~= nil and generation == 2
 
   local function safe(fn)
     local ok, err = pcall(fn)
@@ -87,21 +87,37 @@ return function(mod, chart, national, gen2shape)
     return ok
   end
 
+  -- The engine registers its OWN chart before any mod runs -- Red's 15 types
+  -- and their matchups on a Gen 1 cart, Gold's 19 on a Gen 2 one -- and
+  -- :register throws on an id that already exists rather than quietly
+  -- yielding.  Every one of those throws used to land in safe() below and be
+  -- counted as a skip, so the cart's row won and the era the player picked
+  -- was applied ONLY to matchups involving the types the cart had never
+  -- heard of.  Ghost against Psychic stayed at Gen 1's 0x under a MODERN
+  -- chart that says 2x.  :override is the seam that says "this mod's answer
+  -- wins" out loud, and it is the whole reason an era option means anything.
+  local function claim(registry, id, value)
+    if registry:get(id) ~= nil then
+      registry:override(id, value)
+    else
+      registry:register(id, value)
+    end
+  end
+
   if chart then
     if type(chart.types) == "table" then
       for id, record in pairs(chart.types) do
-        safe(function()
-          mod.content.type_chart:register(id, record)
-        end)
+        safe(function() claim(mod.content.type_chart, id, record) end)
       end
     end
     if type(chart.rows) == "table" then
       for _, row in ipairs(chart.rows) do
-        safe(function()
-          mod.content.type_chart:register(
-            row.attacker .. ">" .. row.defender,
+        if safe(function()
+          claim(mod.content.type_chart, row.attacker .. ">" .. row.defender,
             { multiplier = row.multiplier })
-        end)
+        end) then
+          charted = charted + 1
+        end
       end
     end
   end
@@ -177,9 +193,17 @@ return function(mod, chart, national, gen2shape)
     end
   end
 
-  print(("[nationaldex] gen=%d chart=%s patched=%d registered=%d text=%d "
-    .. "skipped=%d%s")
-    :format(gen2 and 2 or 1, chart and "modern" or "none", patched,
-      registered, texts, skipped,
-      firstError and (" (first error: " .. firstError .. ")") or ""))
+  -- The load tally goes through mod.log rather than print: the loader
+  -- prefixes it with [national_dex] and the launcher's log pane is where a
+  -- player gets sent when a mod misbehaves.  A bare print reaches neither.
+  mod.log:info("gen=%d chart=%s rows=%d patched=%d registered=%d text=%d "
+    .. "skipped=%d", gen2 and 2 or 1, chart and (era or "yes") or "none",
+    charted, patched, registered, texts, skipped)
+  -- Skips are the number worth surfacing -- a record the schema refused is a
+  -- species the player will not find -- so they get their own line at a level
+  -- that stands out, naming the first cause rather than only counting.
+  if skipped > 0 then
+    mod.log:warn("%d registration(s) skipped; first: %s", skipped,
+      tostring(firstError))
+  end
 end

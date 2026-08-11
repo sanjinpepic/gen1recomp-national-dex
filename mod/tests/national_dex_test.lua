@@ -134,16 +134,16 @@ T.eq(matchup["DARK>PSYCHIC_TYPE"], 20,
 T.eq(matchup["FAIRY>DRAGON"], 20, "and FAIRY on DRAGON")
 T.eq(matchup["STEEL>FAIRY"], 20, "and STEEL on FAIRY")
 
--- The three matchups Gen 1 and the modern chart disagree on are the three
--- this mod does not actually change.  content.type_chart:register refuses an
--- id the engine registered first, so the ROM's row wins and the modern value
--- lands in the `skipped` count on the load line instead.  Pinned as they
--- really behave, so that switching the registration to an override makes this
--- suite fail and name the three rows that moved.
-T.eq(matchup["GHOST>PSYCHIC_TYPE"], 0,
-  "GHOST on PSYCHIC keeps Gen 1's immunity bug (modern would be 20)")
-T.eq(matchup["POISON>BUG"], 20, "POISON on BUG keeps Gen 1's 2x (modern would be 10)")
-T.eq(matchup["BUG>POISON"], 20, "BUG on POISON keeps Gen 1's 2x (modern would be 5)")
+-- The three matchups Gen 1 and the modern chart genuinely disagree on, and
+-- the whole reason picking an era has to mean something.  The cart registers
+-- its own chart before any mod runs and :register throws on an id that
+-- already exists, so these three used to be counted as skips and silently
+-- keep the ROM's answer -- Ghost stayed 0x on Psychic under a chart that says
+-- 2x.  :override is what makes the era win.
+T.eq(matchup["GHOST>PSYCHIC_TYPE"], 20,
+  "GHOST on PSYCHIC is 2x, not Gen 1's immunity bug")
+T.eq(matchup["POISON>BUG"], 10, "POISON on BUG is neutral, not Gen 1's 2x")
+T.eq(matchup["BUG>POISON"], 5, "BUG on POISON is resisted, not Gen 1's 2x")
 
 local isDark = false
 for _, id in ipairs(umbreon.types or {}) do
