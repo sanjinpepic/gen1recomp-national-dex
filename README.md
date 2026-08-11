@@ -1,8 +1,9 @@
 # National Dex
 
-A Pokédex backend for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp):
-all 1025 species with modern typing, the 18-type chart, 326 alternate forms, and
-a read API other mods can call for the data.
+A Pokédex backend for [Gen1Recomp](https://github.com/bryanthaboi/gen1recomp), on
+Red, Blue, Yellow and Pokémon Gold: all 1025 species with modern typing, the
+18-type chart, 326 alternate forms, and a read API other mods can call for the
+data.
 
 **Data and code only. No Pokémon artwork ships here** — see
 [Assets](#assets) below.
@@ -10,7 +11,12 @@ a read API other mods can call for the data.
 ## What it does
 
 - **Species 1–1025.** Names, dex entries, typing, base stats, level-up
-  learnsets, evolutions, growth and catch rates.
+  learnsets, evolutions, growth and catch rates. Gold's own cart already
+  describes #1–251, so those receive modern typing as a patch instead of a
+  fresh registration — deliberately without new base stats, since on Gen 2
+  those are live battle numbers the engine reads directly, and overwriting
+  them would silently rebalance a playthrough already in progress. Species
+  #252 onward, and every alternate form, register in full on both games.
 - **A GEN 1 / GEN 2 / MODERN type chart**, 324 matchups each, derived from
   PokeAPI's per-generation damage relations. The era you pick wins over the
   cart's own chart, so under MODERN Ghost really is 2x on Psychic. DARK,
@@ -19,10 +25,16 @@ a read API other mods can call for the data.
 - **326 alternate forms** — megas, gigantamax, regional variants — as forms
   *inside* their base species' entry, never as separate dex rows. Mega Charizard
   X and Y are both No. 006, exactly as in the real games.
-- **Split Sp.Atk / Sp.Def**, carried alongside the ROM's single collapsed
-  Special stat rather than replacing it. The engine's damage maths is untouched.
+- **Split Sp.Atk / Sp.Def**, carried alongside whatever Special stat the cart's
+  own battle math already reads — Red, Blue and Yellow's single collapsed
+  value, Gold's own native split — rather than replacing it. The engine's
+  damage maths is untouched either way.
 - **A Pokédex STATS page** with left/right form browsing, and a party summary
-  that shows the split when you want it.
+  that shows the split when you want it — **Red, Blue and Yellow only.** Gold's
+  dex entry screen and party summary are different classes entirely; this mod
+  detects that they're missing and stands down, so it still loads fine and
+  everything else here still works — those two extra displays simply don't
+  appear.
 - **A read API for other mods** — see **[INSTRUCTION.md](INSTRUCTION.md)**.
 
 ## For mod developers
@@ -55,7 +67,9 @@ Then enable it and set its options:
 - `NATIONAL DEX: ON`
 - `TYPE CHART: GEN 1 | GEN 2 | MODERN` — the effectiveness era to play by
 - `STATS: GEN 1 | MODERN` — display only; MODERN splits Special into Sp.Atk and
-  Sp.Def on the dex and party screens
+  Sp.Def on the dex and party screens, on Red, Blue and Yellow. The option is
+  harmless but has no effect on Gold, since neither screen exists there — see
+  above
 
 ## Assets
 
@@ -64,8 +78,10 @@ ours to redistribute. The only images here are two 922-byte flat-grey `?`
 placeholders we generated, which exist because the engine throws when a species'
 art file is missing.
 
-Species art comes from the player's own copy. Without it, beyond-151 species show the
-placeholder, the dex, stats, forms and API all work regardless.
+Species art comes from the player's own copy. Without it, species beyond the
+cart's own roster — 151 on Red, Blue and Yellow, 251 on Gold, which ships its
+own Johto sprites — show the placeholder. The dex, stats, forms and API all
+work regardless.
 
 ## What is in here
 

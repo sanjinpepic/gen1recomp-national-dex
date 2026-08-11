@@ -4,6 +4,10 @@ This mod publishes a read-only API that any other Gen1Recomp mod can call to get
 species data: stats, typing, learnsets, evolutions, alternate forms and more, for
 all 1025 species plus 326 alternate forms.
 
+It works the same way on Red, Blue, Yellow and Pokémon Gold — see
+[Reading a reply on Gold](#reading-a-reply-on-gold) below for the one place a
+reply's shape actually differs between them.
+
 **Nothing is hosted.** There is no server, no port and no network call. The API
 is a plain Lua table the engine hands to other mods in the same process. The only
 requirement is that a player has this mod installed and enabled.
@@ -102,10 +106,10 @@ fields added later reach you without this API being changed to let them through.
 | `stats` | see below |
 | `hasSplit` | whether the Sp.Atk/Sp.Def split is real for this record |
 | `total` | sum of the stats actually present |
-| `baseStats` | the raw ROM-shaped block, untouched |
-| `learnset` | level-up moves **filtered to moves this engine knows** |
-| `level1Moves` | starting moveset, same filtering |
-| `evolutions` | evolution data |
+| `baseStats` | the raw stat block, untouched — shape follows the schema: `special` on Red/Blue/Yellow, `specialAttack`/`specialDefense` on Gold |
+| `learnset` | level-up moves **filtered to moves this engine knows** (Red/Blue/Yellow; Gold has one `levelMoves` table instead — see [Reading a reply on Gold](#reading-a-reply-on-gold)) |
+| `level1Moves` | starting moveset, same filtering (Red/Blue/Yellow only, same note as `learnset`) |
+| `evolutions` | evolution data — target species key is `species` on Red/Blue/Yellow, `into` on Gold |
 | `growthRate` | engine growth-rate id |
 | `catchRate`, `baseExp` | as the engine reads them |
 | `dexEntry` | `kind`, height, weight, and the id of its description text |
@@ -122,10 +126,12 @@ reply.stats = {
 }
 ```
 
-`special` is what this engine's damage maths actually reads and is reported
-unchanged. `spAttack`/`spDefense` are the true modern split, present wherever
-this mod supplies them. `hasSplit` tells you which of the two worlds you are in
-rather than making you infer it from a `nil`.
+`special` is what this engine's damage maths actually reads on Red, Blue and
+Yellow, and is reported unchanged — on Gold it is always `nil` instead, for
+reasons covered in [Reading a reply on Gold](#reading-a-reply-on-gold) below.
+`spAttack`/`spDefense` are the true modern split, present wherever this mod
+supplies them, on both games. `hasSplit` tells you which of the two worlds
+you are in rather than making you infer it from a `nil`.
 
 ### Extended data
 
@@ -156,6 +162,34 @@ than being stuck with ours.
 Most of these moves have no implementation in this engine. That is expected and
 intended: the data is complete so that a battle engine built on top of it does
 not have to re-source it.
+
+---
+
+## Reading a reply on Gold
+
+The API itself does not change on Pokémon Gold — same calls, same
+`apiVersion`, same deep-copy guarantee. What changes is the shape of the
+record underneath, because Gold validates species against Gen1Recomp's Gen 2
+schema rather than its Gen 1 one, and a reply is a copy of whatever actually
+got registered:
+
+- **`stats.special` is always `nil` on Gold.** The Gen 2 schema has no
+  collapsed Special field to begin with — `baseStats` carries
+  `specialAttack`/`specialDefense` in place of `special`, so there is nothing
+  for the normalised block to read. `spAttack`, `spDefense` and `hasSplit`
+  behave exactly as documented above on both games; only `special` (and the
+  raw `baseStats.special` it comes from) goes missing. Read the split fields
+  instead of `special` and this is invisible.
+- **`levelMoves` replaces `learnset` and `level1Moves`.** Gold keeps one
+  level-up table instead of two. `movesFull` and `movesByMethod` — the
+  unfiltered modern data — are unaffected either way; they never depended on
+  which of those shapes the record used.
+- **An evolution's target is `into`, not `species`.** `method`, and `level`
+  or `item` where they apply, are unchanged.
+
+None of this touches `movesFull`, `movesByMethod`, `abilities`, `evYield`, or
+the rest of the extended data above — those are this mod's own fields,
+attached the same way regardless of which game is running.
 
 ---
 
