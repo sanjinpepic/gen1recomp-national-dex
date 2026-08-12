@@ -114,10 +114,16 @@ recompilation of Pokémon Red.
 
 ## Licence
 
-[MIT](LICENSE) — use it, change it, ship it, for private & free use. not commercially. Keep the
-copyright notice.
+[PolyForm Noncommercial 1.0.0](LICENSE) — free to use, change and share for any
+**noncommercial** purpose, personal use included. Commercial use needs a separate
+licence from the copyright holder. Keep the copyright notice.
 
-The MIT licence covers **this project's own code and generated data files**. It
-does not and cannot grant rights to Pokémon itself. Pokémon and Pokémon character
-names are trademarks of Nintendo, Creatures Inc. and GAME FREAK Inc. PokeAPI is its own entity. This is an
-unofficial fan project, not affiliated with or endorsed by any of them.
+That makes this project source-available rather than *open source* in the Open
+Source Initiative's sense of the term, which does not allow a licence to restrict
+a field of endeavour. The distinction matters if you are choosing a dependency.
+
+The licence covers **this project's own code and generated data files**. It does
+not and cannot grant rights to Pokémon itself. Pokémon and Pokémon character names
+are trademarks of Nintendo, Creatures Inc. and GAME FREAK Inc. PokeAPI is its own
+entity. This is an unofficial fan project, not affiliated with or endorsed by any
+of them.
