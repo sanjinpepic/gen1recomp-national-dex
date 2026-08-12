@@ -146,6 +146,21 @@ return function(mod)
   local Dexpage = loadSibling(mod, "src/dexpage.lua")
   if Dexpage then Dexpage(mod) end
 
+  -- Gold draws neither of the screens above: its #DEX is its own class, sized
+  -- from the cart's dex table rather than from the dexSize constant Gen 1
+  -- reads, so the beyond-251 species this mod registers never reached the
+  -- listing at all.  src/gen2dexlist.lua is that half -- the listing, and
+  -- alternate-form browsing on Gold's entry screen -- and it is handed the
+  -- generation rather than probing for it, because require() is NOT
+  -- redirected on a Gold boot: every class this mod names resolves to the Gen
+  -- 1 one unless it is asked for by its real Gen 2 name.  It is also handed
+  -- Dexpage.buildFormList so both games decide a species' form order with the
+  -- same function instead of two copies that can drift.
+  local Gen2Dex = loadSibling(mod, "src/gen2dexlist.lua")
+  if Gen2Dex then
+    Gen2Dex(generation, Dexpage and Dexpage.buildFormList)
+  end
+
   -- Party summary stats box (src/summarystats.lua): same treatment as the
   -- dex page, and unconditional for the same reason -- it reads whatever
   -- mon the player already opened the STATUS screen for.  Passed

@@ -3,6 +3,33 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.11.0
+
+### Added
+
+- Species past #251 now appear in the Pokedex list on Pokemon Gold. The list
+  is widened by patching Gold's own `#DEX` class in memory and handing it a
+  private augmented copy of the dex table -- never a write into the cart's
+  own table, which the Pokegear shares by reference.
+- Alternate-form browsing on Gold's dex entry screen, bound to UP/DOWN.
+  LEFT/RIGHT already move that screen's action bar across PAGE/AREA/CRY/PRNT,
+  and claiming them would make three of those four unreachable. On Gen 1 the
+  binding stays LEFT/RIGHT, where nothing else uses them.
+
+### Fixed
+
+- `dexSize` never reached Gold. The `constants` registry routes to
+  `gen2Constants` on a Gen 2 boot, so the patch landed on a key Gold's
+  constant schema does not define and merged silently without raising. It
+  would not have helped either way: Gold's dex screen never reads `dexSize`,
+  which the engine consults at exactly one place -- Gen 1's own menu.
+
+### Notes
+
+- With `NATIONAL DEX` off, nothing is added and Gold keeps its own 251.
+- The STATS page and the party summary split-stats box remain Gen 1 only.
+
+
 ## 0.10.1
 
 
