@@ -40,6 +40,12 @@ data.
 - **Plays alongside Useful Dex.** That mod replaces the dex screen; this one
   augments what it builds rather than competing for it, so its pages keep
   working and form browsing keeps working inside them.
+- **All 833 modern moves**, registered with their real name, type, power,
+  accuracy and PP. `MOVES: ALL` widens level-up learnsets to the ones this
+  engine can execute honestly — 191 on Gen 1, 272 on Gold. A move needing
+  state the engine does not have (recharge, charge turns, held items,
+  abilities, weather, hazards, screens, spread targeting) is registered but
+  never taught: an approximated move is worse than an absent one.
 - **A read API for other mods** — see **[INSTRUCTION.md](INSTRUCTION.md)**.
 
 ## For mod developers
@@ -74,6 +80,11 @@ Then enable it and set its options:
 - `STATS: GEN 1 | MODERN` — display only; MODERN splits Special into Sp.Atk and
   Sp.Def on the dex and party screens. Red, Blue and Yellow only: Gold splits
   Special natively and shows both already, so the option does nothing there
+- `MOVES: GEN-NATIVE | ALL` — GEN-NATIVE, the default, leaves learnsets as the
+  cart has them. ALL widens them to the modern moves this engine can execute.
+  Every move is registered either way, whatever this is set to: the engine
+  drops move ids it cannot find when a save loads, so a move that existed only
+  under a setting would vanish from your party when you turned it off
 
 ## Assets
 
