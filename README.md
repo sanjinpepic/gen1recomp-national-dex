@@ -59,9 +59,6 @@ data.
   party summary draw the art you picked in the sprite mod rather than the
   cart's own pics. Without that mod, or with it disabled, both screens look
   exactly as they did.
-- **Plays alongside Useful Dex.** That mod replaces the dex screen; this one
-  augments what it builds rather than competing for it, so its pages keep
-  working and form browsing keeps working inside them.
 - **All 833 modern moves**, registered with their real name, type, power,
   accuracy and PP. `MOVES: ALL` widens level-up learnsets to the ones this
   engine can execute honestly — 191 on Gen 1, 272 on Gold. A move needing
