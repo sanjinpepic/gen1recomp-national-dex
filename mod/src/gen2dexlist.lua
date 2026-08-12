@@ -45,6 +45,22 @@
 -- about: see M.spriteArt for why the sprite mod cannot reach this screen, and
 -- the drawPic patch for why the art also has to be drawn here rather than
 -- handed back to the cart's own draw.
+--
+-- The third arm is the two actions this mod adds to the entry screen's action
+-- bar and the pages behind them: STAT, the Gen 2 counterpart of the Gen 1
+-- STATS page, and LVL, the species' evolution line and the moves it learns by
+-- levelling.  Its own section below carries the measurements that decide how a
+-- fifth and a sixth word fit on a row that was already full, and why the bar
+-- scrolls rather than being respelled.
+--
+-- Why they are BAR SLOTS rather than Gen 1's walk-down-a-strip: on this game
+-- UP and DOWN are already spoken for on the entry screen -- they cycle a
+-- species' alternate forms, which is the arm above -- and LEFT/RIGHT are the
+-- cart's own action bar.  There is no direction left to enter a strip with
+-- that is not being taken off something a player already uses.  The bar is
+-- the screen's own way of offering another page, so the pages are offered
+-- there; the WALKING survives inside the LVL view, where UP and DOWN are free
+-- and page it exactly as the Gen 1 strip pages.
 
 local M = {}
 
@@ -175,6 +191,492 @@ function M.newSpecies(pokemon, entries)
     return a.record.dex < b.record.dex
   end)
   return out
+end
+
+-- --------------------------------------------- how far a page jump travels
+--
+-- LEFT/RIGHT move Gold's listing by one visible page, and "one page" is the
+-- number of rows that listing windows -- VISIBLE_ROWS in
+-- src/ui/gen2/PokedexMenu.lua, a file-local the class exports nowhere.
+--
+-- MEASURED off the class rather than copied here as a literal.  A literal is a
+-- second copy of a number this mod does not own, and an engine release that
+-- rewindowed the listing (or a widescreen mode that showed more of it) would
+-- leave the page jump stepping by the old size with nothing anywhere saying
+-- so.  :ensureVisible scrolls exactly far enough to bring `index` into view
+-- (PokedexMenu.lua:278-286), so a probe placed far down a long list comes back
+-- with scroll = index - VISIBLE_ROWS and the window size falls out of the
+-- subtraction.
+--
+-- The probe is a plain table because that method reads index, scroll and rows
+-- and touches nothing else, which is also what keeps this half of the file
+-- free of the engine.
+local PROBE_ROWS, PROBE_INDEX = 1000, 500
+
+-- The window size, or nil for a class this cannot read -- never a guess.
+function M.visibleRows(ensureVisible)
+  if type(ensureVisible) ~= "function" then return nil end
+  local rows = {}
+  for index = 1, PROBE_ROWS do rows[index] = true end
+  local probe = { rows = rows, index = PROBE_INDEX, scroll = 0 }
+  if not pcall(ensureVisible, probe) then return nil end
+  if type(probe.scroll) ~= "number" then return nil end
+  local visible = PROBE_INDEX - probe.scroll
+  -- A one-row page is a page jump that is not one, and a page as long as the
+  -- probe means the method did not do the thing this reads it as having done.
+  -- Either answer is "stand down", not "assume seven".
+  if visible ~= math.floor(visible) or visible < 2 or visible >= PROBE_INDEX then
+    return nil
+  end
+  return visible
+end
+
+-- ------------------------------------------------------- the STATS action
+--
+-- Gold's entry screen ends in an action bar the player walks with LEFT/RIGHT
+-- (src/ui/gen2/PokedexMenu.lua:333-336), and the fifth entry added to it here
+-- is this mod's Gen 2 counterpart of the Gen 1 STATS page (src/dexpage.lua).
+-- The bar is drawn as ONE string at tile column 1 of row 17, with the arrow
+-- parked in the blank cell in FRONT of the selected word (the cart's own
+-- ENTRY_ACTION_X = { 1, 6, 11, 15 } are exactly those cells), so a slot costs
+-- one cell for the arrow plus one per letter.
+--
+-- The row is already full, and that is measured rather than assumed.  The
+-- entry screen draws under G.translate(-SCX, 0) with SCX = 5
+-- (PokedexMenu.lua:903); the font cell is a fixed 8 pixels
+-- (src/render/Font.lua's GLYPH advance, which Font.advanceOf returns for every
+-- ROM font page); and the cart's " PAGE AREA CRY PRNT" is 19 cells drawn at
+-- column 1, so it runs from x = 1*8 - 5 = 3 to x = 155 on a 160-pixel screen.
+-- Three pixels spare on the left, five on the right.  A twentieth cell would
+-- end at 163, and this screen has no scissor -- PokedexMenu:drawWidescreen
+-- scales drawPanel straight into the window -- so it would print OUTSIDE the
+-- console frame rather than being clipped.
+--
+-- 19 cells is therefore the entire budget, and the four words with their four
+-- arrow cells already spend all of it: (1+4)+(1+4)+(1+3)+(1+4) = 19.  Adding
+-- " STAT" asks for 24.  No abbreviation rescues that -- five slots need five
+-- arrow cells, which leaves 14 cells for five words, so even five three-letter
+-- labels overflow by one.
+--
+-- So the bar SCROLLS, which is this screen's own answer to a list that does
+-- not fit: the listing beside it shows seven of its rows and moves the window
+-- to keep the cursor on screen.  Four slots are shown and the window moves
+-- only when the arrow reaches the fifth, so the bar is the cart's own
+-- " PAGE AREA CRY PRNT" -- character for character, arrow column for arrow
+-- column -- on four of the five positions, and reads " AREA CRY PRNT STAT"
+-- only while the new action is selected.
+--
+-- STAT and not STATS, because BOTH windows have to fit the same 19 cells: the
+-- second one measures (1+4)+(1+3)+(1+4)+(1+N) = 15 + N, so the new word gets
+-- four letters and a fifth would push it off the screen.
+--
+-- A SIXTH slot -- LVL, the evolution line and the level-up learnset -- adds a
+-- third window and no new problem, because the window is what pays for it.
+-- The three the bar can show now measure:
+--
+--   slots 1-4  " PAGE AREA CRY PRNT"  (1+4)+(1+4)+(1+3)+(1+4) = 19
+--   slot  5    " AREA CRY PRNT STAT"  (1+4)+(1+3)+(1+4)+(1+4) = 19
+--   slot  6    " CRY PRNT STAT LVL"   (1+3)+(1+4)+(1+4)+(1+3) = 18
+--
+-- So the widest is still the cart's own row and nothing new can overflow it.
+-- The third window being SHORT is the one thing the sixth slot really
+-- changed, and it is not cosmetic: the cart clears 18 columns and lets its
+-- own 19-cell string cover the nineteenth, so a window that stops at 18 would
+-- leave the "T" of the cart's PRNT standing in that last cell.  See
+-- drawActionBar, which clears the row's whole width for that reason.
+--
+-- LVL and not MOVES or LEVEL, for the same measurement: at (1+5) the third
+-- window is 20 cells and prints off the side of the console.
+
+-- The engine's own four in its own order (PokedexMenu.lua:51), and ours after
+-- them.  That order is load bearing rather than cosmetic: A on slots 1-4 is
+-- dispatched by the ENGINE's own branch off this very index, so a bar that
+-- listed them in another order would fire the wrong action.
+M.BAR_ACTIONS = { "PAGE", "AREA", "CRY", "PRNT", "STAT", "LVL" }
+M.STATS_ACTION = "STAT"
+M.MOVES_ACTION = "LVL"
+-- How many slots are shown at once, the tile column the row starts at, and
+-- the budget derived above.
+M.BAR_SLOTS = 4
+M.BAR_COLUMN = 1
+M.BAR_COLUMNS = 19
+
+-- The bar a boot actually gets.  The sixth slot is only offered when the
+-- pages behind it can be built at all: src/dexpage.lua's section builders are
+-- handed to M.install and a mod file that failed to load leaves them nil, and
+-- a slot that opens an empty screen is worse than a slot that is not there.
+-- The five-slot bar is exactly what this screen shipped with before LVL
+-- existed, so declining costs the new feature and nothing else.
+function M.barActions(withMoves)
+  if withMoves then return M.BAR_ACTIONS end
+  local out = {}
+  for _, action in ipairs(M.BAR_ACTIONS) do
+    if action ~= M.MOVES_ACTION then out[#out + 1] = action end
+  end
+  return out
+end
+
+-- One step of the arrow, wrapping both ways exactly as the cart's own does
+-- (PokedexMenu.lua:334-336) -- only over five entries rather than four.
+function M.barStep(index, step, count)
+  count = count or #M.BAR_ACTIONS
+  if count < 1 then return 1 end
+  if type(index) ~= "number" or index < 1 or index > count then index = 1 end
+  return ((index - 1 + (step or 0)) % count) + 1
+end
+
+-- Which slot the visible window starts at.  Stateless: with five entries and
+-- four slots there is exactly one thing a window can do, so remembering where
+-- it was last frame would only be a second answer to disagree with this one.
+function M.barWindow(selected, slots, count)
+  if slots >= count then return 1 end
+  if selected <= slots then return 1 end
+  return math.min(selected - slots + 1, count - slots + 1)
+end
+
+-- The bar for one selection: the single string the screen prints at
+-- M.BAR_COLUMN, the column its arrow parks in, and the arrow column of every
+-- slot the window shows (nil for one it does not).  `width` is what the row
+-- actually costs, so a caller -- or a test -- can hold it against
+-- M.BAR_COLUMNS rather than trusting the arithmetic above.
+function M.barLayout(selected, actions, slots)
+  actions = type(actions) == "table" and actions or M.BAR_ACTIONS
+  local count = #actions
+  slots = math.min(type(slots) == "number" and slots or M.BAR_SLOTS, count)
+  if type(selected) ~= "number" or selected < 1 or selected > count then
+    selected = 1
+  end
+  local first = M.barWindow(selected, slots, count)
+  local parts, arrows, column = {}, {}, M.BAR_COLUMN
+  for offset = 0, slots - 1 do
+    local index = first + offset
+    local label = actions[index]
+    arrows[index] = column
+    -- The leading space IS the arrow's cell; the cart's own string is spelled
+    -- the same way and its arrow table is the reason why.
+    parts[#parts + 1] = " " .. label
+    column = column + 1 + #label
+  end
+  return {
+    text = table.concat(parts),
+    arrow = arrows[selected] or M.BAR_COLUMN,
+    arrows = arrows,
+    first = first,
+    width = column - M.BAR_COLUMN,
+  }
+end
+
+-- ------- what the STATS page reads
+--
+-- Gold's records spell the split `baseStats.specialAttack` /
+-- `specialDefense` (src/import/RomExtractorGen2.lua:786, and src/gen2shape.lua
+-- writes the mod's own records that way for the same schema), while this
+-- mod's Gen 1 shape carries a collapsed `baseStats.special` with the real
+-- split alongside it as `spAttack` / `spDefense`.  Both are accepted, in that
+-- order, so this reads a Gold record, a reply from mod.exports.statsBySpecies
+-- and a Gen 1-shaped record alike -- and a record that only ever had the
+-- collapsed number shows it under both Special rows rather than a blank.
+function M.statValues(record)
+  local base = (type(record) == "table" and record.baseStats) or {}
+  -- Walked with select rather than over a packed table: the first candidate is
+  -- routinely nil (a Gold record has no `special`, a Gen 1 one no
+  -- `specialAttack`) and ipairs stops dead on the first hole, which reads every
+  -- fallback below it as absent.
+  local function pick(...)
+    for index = 1, select("#", ...) do
+      local value = select(index, ...)
+      if type(value) == "number" then return value end
+    end
+    return 0
+  end
+  local special = base.special
+  local top = type(record) == "table" and record or {}
+  return {
+    hp = pick(base.hp),
+    attack = pick(base.attack),
+    defense = pick(base.defense),
+    specialAttack = pick(base.specialAttack, top.spAttack, special),
+    specialDefense = pick(base.specialDefense, top.spDefense, special),
+    speed = pick(base.speed),
+  }
+end
+
+-- The labels are Gold's OWN (src/ui/gen2/SummaryMenu.lua:100), spelled the way
+-- the cart's STATUS screen spells them, so a player reading both screens is
+-- reading one vocabulary.  HP leads because this is a base-stat block rather
+-- than a live mon's, where HP is a bar instead of a row.
+M.STAT_ROWS = {
+  { "HP", "hp" }, { "ATTACK", "attack" }, { "DEFENSE", "defense" },
+  { "SPCL.ATK", "specialAttack" }, { "SPCL.DEF", "specialDefense" },
+  { "SPEED", "speed" },
+}
+
+-- Ordered { label, value } rows for one record, TOTAL last and equal to the
+-- sum of the rows above it.
+--
+-- Always the six modern stats, with no equivalent of the Gen 1 page's STATS
+-- option: Gold's own records are split records, there is no collapsed Special
+-- on this game to show instead, and the cart's SUMMARY already prints
+-- SPCL.ATK and SPCL.DEF beside every mon in the party.  An option choosing
+-- between one Special number and two has nothing to choose here.
+function M.statRows(record)
+  local values = M.statValues(record)
+  local rows, total = {}, 0
+  for _, row in ipairs(M.STAT_ROWS) do
+    local value = values[row[2]] or 0
+    rows[#rows + 1] = { row[1], value }
+    total = total + value
+  end
+  rows[#rows + 1] = { "TOTAL", total }
+  return rows
+end
+
+-- data/types/names.asm, by way of src/ui/gen2/SummaryMenu.lua:107-110: a type
+-- prints as its own id except the two the ROM extractor has to spell around.
+-- This mod registers plain ids ("GRASS", "PSYCHIC"), the extractor's own
+-- records can carry either, and one table covers both.
+M.TYPE_NAMES = { PSYCHIC_TYPE = "PSYCHIC", CURSE_TYPE = "???" }
+
+-- The one or two type names to print for a record.
+function M.typeNames(record)
+  local types = (type(record) == "table" and record.types) or {}
+  local function name(id)
+    if type(id) ~= "string" or id == "" then return nil end
+    return M.TYPE_NAMES[id] or id:upper()
+  end
+  local first, second = name(types[1]), name(types[2])
+  -- PrintMonTypes' .hide_type_2: a single-typed mon really carries the same
+  -- type twice, and the second name is blanked rather than printed twice.
+  if second == first then second = nil end
+  return first, second
+end
+
+-- ------------------------------------------------------- the LVL view
+--
+-- What the sixth action opens: the species' evolution line, then the moves it
+-- learns by levelling, paged in that order.  The same two sections the Gen 1
+-- strip shows first (src/dexpage.lua), built by that file's own functions and
+-- handed to M.install -- neither the trigger tokens, the indents, the level
+-- column nor the "a section with no rows is no page at all" rule is written
+-- a second time here.  MACHINE, EGG, TUTOR and OTHER are deliberately not
+-- shown: they are 79, and up to 110, rows of a list nobody walks a dex to
+-- read, and leaving them out is what keeps this view four pages at its worst
+-- instead of twenty.
+--
+-- Evolutions come FIRST for the reason Gen 1 puts them first: the level-up
+-- list is the long one, and a player opening this to see what a mon becomes
+-- must not have to page through its moves to get there.
+--
+-- The geometry is the STATS page's own box -- 16 interior rows by 18 interior
+-- columns, every row a bordered box fits on Gold's 18-row screen -- with a
+-- title row and the rule under it spent on the header, exactly as the entry
+-- screen and the STATS page spend theirs.  That leaves 14 rows for content,
+-- against the twelve Gen 1's 144-pixel screen affords, which is why the cut
+-- is a parameter of dexpage's paginate rather than its constant.
+M.PAGE_INTERIOR_ROWS = 16
+M.PAGE_COLUMNS = 18
+-- The first and last interior columns: column 0 is the box's own border.
+M.PAGE_LEFT = 1
+M.PAGE_RIGHT = 18
+M.PAGE_TITLE_ROW = 1
+M.PAGE_RULE_ROW = 2
+M.PAGE_FIRST_ROW = 3
+M.PAGE_ROWS = M.PAGE_INTERIOR_ROWS - M.PAGE_FIRST_ROW + 1
+
+-- What a species with neither an evolution family nor a level-up list gets.
+--
+-- The rule that a section with no rows produces no page still holds -- there
+-- is no EVOLUTION page and no LEVEL UP page here -- but the VIEW is reached
+-- from a bar slot rather than by walking into it, so it cannot answer by not
+-- existing the way Gen 1's strip does.  A player who pressed A is owed a
+-- screen that says why it is empty; a bordered box with nothing in it reads
+-- as a bug, and refusing to open reads as a broken button.
+M.EMPTY_TITLE = "NO DATA"
+
+-- src/dexpage.lua lays its rows out in PIXELS on a screen whose left margin
+-- is x = 8 and whose right margin is x = 152; Gold's box runs from tile
+-- column 1 to tile column 18.  Those are the same eighteen cells -- the font
+-- cell is a fixed 8 pixels on both games -- so a row's column is its x over
+-- 8, and every width dexpage already fitted its text to survives the trip
+-- unchanged.  Clamped to the box because a deeper indent than that file's
+-- LINE_MAX_DEPTH allows must cost glyphs off a name rather than print into
+-- the border.
+function M.columnOf(x)
+  local column = math.floor((type(x) == "number" and x or 0) / 8)
+  if column < M.PAGE_LEFT then return M.PAGE_LEFT end
+  if column > M.PAGE_RIGHT then return M.PAGE_RIGHT end
+  return column
+end
+
+-- Where a right-aligned string starts so that it ENDS on the box's last
+-- column -- the level beside a move, the trigger beside an evolution, the
+-- page counter beside a title.  Pure arithmetic rather than a font
+-- measurement, which the Gen 1 page needs and this one does not: every ROM
+-- font page advances a fixed 8 pixels, so on a tile grid a string of n
+-- glyphs occupies exactly n cells.
+function M.rightColumn(text)
+  local column = M.PAGE_RIGHT - #tostring(text or "") + 1
+  if column < M.PAGE_LEFT then return M.PAGE_LEFT end
+  return column
+end
+
+-- One page's draws, in Gold's own tile coordinates: { text, x, y } for a
+-- string and { cursor = true, x, y } for the mark on the current species,
+-- which is a TILE and not a glyph.  Nothing here measures anything or knows
+-- what a palette is, so a test asserts what a page would print and where
+-- before a screen is involved.
+--
+-- The mark is the engine's own cursor tile for the same reason the Gen 1 page
+-- uses its font's $ED: it is what every menu in the game parks on a chosen
+-- row, and it is exactly what this mark means.  Drawn through Chrome's cursor
+-- helper rather than printed as text -- Gold's charmap has no ">" either, and
+-- Font.encode turns a glyph with no tile into a space.
+--
+-- `formLabel` is the browsed form's name, and it goes on the RULE row rather
+-- than beside the title: the title row's right end already belongs to the
+-- page counter, and a base species -- the common case -- has no label at all,
+-- so the rule stays unbroken until there is something to say.
+function M.pageLayout(page, formLabel)
+  local out = {}
+  if type(page) ~= "table" then return out end
+  out[#out + 1] = { text = page.title or "", x = M.PAGE_LEFT,
+                    y = M.PAGE_TITLE_ROW }
+  -- Only when the section really does run over: a "1/1" on every short
+  -- section would be noise on a screen with none to spare.
+  if (page.count or 1) > 1 then
+    local counter = tostring(page.index or 1) .. "/" .. tostring(page.count)
+    out[#out + 1] = { text = counter, x = M.rightColumn(counter),
+                      y = M.PAGE_TITLE_ROW }
+  end
+  if type(formLabel) == "string" and formLabel ~= "" then
+    out[#out + 1] = { text = formLabel, x = M.rightColumn(formLabel),
+                      y = M.PAGE_RULE_ROW }
+  end
+  local y = M.PAGE_FIRST_ROW
+  for _, row in ipairs(page.rows or {}) do
+    out[#out + 1] = { text = row.text, x = M.columnOf(row.x), y = y }
+    if row.mark then
+      out[#out + 1] = { cursor = true, x = M.PAGE_LEFT, y = y }
+    end
+    if row.right then
+      out[#out + 1] = { text = row.right, x = M.rightColumn(row.right), y = y }
+    end
+    y = y + 1
+  end
+  return out
+end
+
+-- The view's pages for one record: its family, then its level-up list.
+--
+-- `builders` is src/dexpage.lua's own three functions, handed in rather than
+-- required, so this file cannot end up with a second opinion about what an
+-- evolution line looks like.  `evo` is that record's evolutionsOf reply and
+-- `lookup` answers the same for its relatives; `shaped` is its
+-- statsBySpecies reply.  All four are optional and a missing one costs its
+-- own section and nothing else.
+function M.movePages(builders, evo, lookup, shaped)
+  local sections = {}
+  if type(builders) == "table" then
+    if type(builders.evolutionSections) == "function" then
+      local ok, list = pcall(builders.evolutionSections, evo, lookup)
+      if ok and type(list) == "table" then
+        for _, section in ipairs(list) do sections[#sections + 1] = section end
+      end
+    end
+    if type(builders.levelUpSection) == "function" then
+      local ok, section = pcall(builders.levelUpSection, shaped)
+      if ok and type(section) == "table" then sections[#sections + 1] = section end
+    end
+  end
+  local pages
+  if type(builders) == "table" and type(builders.paginate) == "function" then
+    local ok, built = pcall(builders.paginate, sections, M.PAGE_ROWS)
+    pages = ok and type(built) == "table" and built or nil
+  end
+  pages = pages or {}
+  if #pages == 0 then
+    pages[1] = { title = M.EMPTY_TITLE, index = 1, count = 1, rows = {} }
+  end
+  return pages
+end
+
+-- One step through the pages, CLAMPED at both ends.  The same rule the Gen 1
+-- strip holds to: the list has a top and a bottom a player can feel, and an
+-- UP that silently landed on the last page would read as the screen having
+-- closed and reopened.
+function M.pageStepTo(page, step, count)
+  if type(count) ~= "number" or count < 1 then return 1 end
+  local index = (type(page) == "number" and page or 1) + (step or 0)
+  if index < 1 then return 1 end
+  if index > count then return count end
+  return index
+end
+
+-- ------------------------------------------- the SEARCH screen's vocabulary
+--
+-- Gold's SEARCH screen walks a wheel of type names and matches them against a
+-- species record's own `types` (src/ui/gen2/PokedexMenu.lua:1336-1346).  Those
+-- two are spelled in different alphabets, and for one type of the eighteen the
+-- spellings differ: the wheel offers the DISPLAY name PSYCHIC while every
+-- record -- the cart's own, extracted through the ROM's type table
+-- (src/import/RomExtractorGen2.lua:1516), and this mod's generated data alike
+-- -- carries the CONSTANT id PSYCHIC_TYPE.  The engine compares the two raw
+-- strings, so PSYCHIC is one wheel position in eighteen that can never match
+-- anything.  That is the stock cart's behaviour too, not something this mod
+-- introduced; it is fixed here because this mod is what makes the wheel worth
+-- using on an 1100-species roster.
+--
+-- Only the string the COMPARISON uses is translated.  The label stays PSYCHIC
+-- on screen: a player reading the wheel expects the name the rest of the game
+-- prints, and PSYCHIC_TYPE is an implementation detail leaking out of the ROM.
+--
+-- Derived from M.TYPE_NAMES rather than spelled a second time, so the table
+-- that prints a type and the table that searches for one cannot drift apart.
+M.SEARCH_TYPE_IDS = {}
+for id, label in pairs(M.TYPE_NAMES) do M.SEARCH_TYPE_IDS[label] = id end
+
+-- The id a record would carry for a wheel label.  Every other type is its own
+-- id, so an unmapped label is returned unchanged.
+function M.searchTypeId(label)
+  if type(label) ~= "string" then return label end
+  return M.SEARCH_TYPE_IDS[label] or label
+end
+
+-- What the wheel is missing for this mod's roster.
+--
+-- FAIRY, and only FAIRY.  Gold's wheel is the seventeen types its own cart
+-- knows plus the "-----" wildcard, and 59 of the species this mod registers
+-- carry FAIRY -- along with five of the cart's own that the modern type chart
+-- repatches onto it -- so without a wheel position not one of them can be
+-- found by type at all.
+--
+-- ??? (CURSE_TYPE) is deliberately NOT added.  It is the other name
+-- M.TYPE_NAMES has to spell around, so it looks like the obvious second
+-- entry, but no record in this mod's generated data carries it and the cart
+-- gives it to no species either -- it exists to type the move CURSE and
+-- nothing else.  A wheel position for it would be exactly the guaranteed
+-- "not found" that PSYCHIC was, added on purpose.
+M.SEARCH_TYPES_ADDED = { "FAIRY" }
+
+-- Appends whatever `added` holds that `wheel` does not, in order, and answers
+-- how many entries it added.  Idempotent by construction: the wheel is a
+-- process-global table on a class this mod does not own, and a second install
+-- or a reload that put FAIRY on it twice would give the type two positions
+-- with the wheel reading the same word at both.
+function M.widenSearchTypes(wheel, added)
+  if type(wheel) ~= "table" then return 0 end
+  added = type(added) == "table" and added or M.SEARCH_TYPES_ADDED
+  local have = {}
+  for _, name in ipairs(wheel) do have[name] = true end
+  local count = 0
+  for _, name in ipairs(added) do
+    if not have[name] then
+      wheel[#wheel + 1] = name
+      have[name] = true
+      count = count + 1
+    end
+  end
+  return count
 end
 
 -- ------------------------------------------------- the sprite mod's art
@@ -405,7 +907,7 @@ end
 -- so a headless test that only wants the pure half above never touches love.
 local function requireGen2Menu()
   local names = { "src.ui.gen2.PokedexMenu", "src.render.GbcPalette",
-    "src.world.gen2.Palettes" }
+    "src.world.gen2.Palettes", "src.ui.gen2.Chrome" }
   local mods = {}
   for _, name in ipairs(names) do
     local ok, value = pcall(require, name)
@@ -422,12 +924,28 @@ local installed = false
 
 -- `generation` is handed in rather than probed here.  See the file banner: the
 -- one thing this must never do is decide it is on Gold because a Gold-shaped
--- method answered.  No `mod` handle is taken, unlike the siblings: everything
--- this installs reads the running game off the menu instance it patches, and
--- an argument it never used would only suggest otherwise -- `resolveArt` is
--- M.spriteArt's closure for the same reason, already holding whatever it
--- needed of the mod API.
-function M.install(generation, buildFormList, resolveArt)
+-- method answered.  `resolveArt` is M.spriteArt's closure, already holding
+-- whatever it needed of the mod API.
+-- `scroll` is src/dexscroll.lua, handed in for its GEN2 profile and its rate
+-- lookup.  Optional like every other integration here: without it the listing
+-- keeps stepping one row per press, which is what Gold shipped.
+-- `mod` is the mod handle, taken for exactly one thing: mod.exports is where
+-- src/api.lua publishes statsBySpecies, and that is read at DRAW time rather
+-- than captured here because api.lua installs after this file does -- a
+-- capture taken now would be nil for the life of the process, which is the
+-- same reason src/dexpage.lua reads it late.
+-- `abilityRows` is src/dexpage.lua's own, handed over rather than copied, so
+-- the two games cannot end up disagreeing about which of a species' abilities
+-- are shown or in what order -- the same arrangement `buildFormList` already
+-- has.  Its M.HIDDEN_MARK comes with it for the same reason: the mark on the
+-- hidden row is one decision, not one per screen.
+-- `pageBuilders` is the rest of that file's pure half -- evolutionSections,
+-- levelUpSection and paginate -- for the LVL view, on the same terms.  Absent
+-- or incomplete, the sixth bar slot is not offered at all and says so in the
+-- log: an action that opens a screen with nothing on it is worse than one
+-- that is not on the bar.
+function M.install(generation, buildFormList, resolveArt, scroll, mod,
+                   abilityRows, hiddenMark, pageBuilders)
   if generation ~= 2 then return false end
   if installed then return false end
   local mods = requireGen2Menu()
@@ -435,10 +953,18 @@ function M.install(generation, buildFormList, resolveArt)
   local PokedexMenu = mods["src.ui.gen2.PokedexMenu"]
   local GbcPalette = mods["src.render.GbcPalette"]
   local Palettes = mods["src.world.gen2.Palettes"]
+  local Chrome = mods["src.ui.gen2.Chrome"]
   if type(PokedexMenu.rebuild) ~= "function"
     or type(PokedexMenu.update) ~= "function"
     or type(PokedexMenu.picFor) ~= "function"
     or type(PokedexMenu.drawPic) ~= "function"
+    or type(PokedexMenu.drawPanel) ~= "function"
+    or type(PokedexMenu.drawEntry) ~= "function"
+    or type(PokedexMenu.cursorVisible) ~= "function"
+    or type(PokedexMenu.printNumString) ~= "function"
+    or type(PokedexMenu.beginSearch) ~= "function"
+    or type(PokedexMenu.searchTypeName) ~= "function"
+    or type(PokedexMenu.SEARCH_TYPES) ~= "table"
     or type(PokedexMenu.drawEntryBody) ~= "function" then
     return false
   end
@@ -530,6 +1056,70 @@ function M.install(generation, buildFormList, resolveArt)
     return compact
   end
 
+  -- ------- the SEARCH screen
+  --
+  -- Three repairs to the cart's own screen, no new furniture.  Everything the
+  -- screen already does right is left to it: beginSearch walks self.rows --
+  -- the LIVE listing this file widens, so the beyond-251 species are searchable
+  -- with nothing done for them -- and it searches SEEN species only, which is
+  -- the rule that keeps the dex from leaking what the player has not met.
+  -- Only its vocabulary and the list it starts from are wrong, so it is wrapped
+  -- rather than reimplemented.
+
+  -- 1. FAIRY joins the wheel.  Both places that step it read #SEARCH_TYPES
+  -- live (PokedexMenu.lua:1309, :1316), so appending is the whole of it; the
+  -- name is five cells in a seven-cell field at column 10, so it draws inside
+  -- the box exactly as ELECTRIC's eight already do.
+  M.widenSearchTypes(PokedexMenu.SEARCH_TYPES)
+
+  -- 2. The wheel's label, translated to the id a record carries -- and ONLY
+  -- for the comparison.  See M.SEARCH_TYPE_IDS for why PSYCHIC can otherwise
+  -- never match anything.
+  --
+  -- The engine asks this one method for both jobs, printing and matching
+  -- (:1397-1398 and :1336-1337), and passes nothing that tells them apart, so
+  -- the flag below marks the single call that wants the record's spelling.
+  -- Set for the duration of the wrapped call and cleared however it ends: a
+  -- flag left standing would put PSYCHIC_TYPE on the screen the player reads.
+  local originalSearchTypeName = PokedexMenu.searchTypeName
+  function PokedexMenu:searchTypeName(slot)
+    local label = originalSearchTypeName(self, slot)
+    if self.nationalDexSearchIds then return M.searchTypeId(label) end
+    return label
+  end
+
+  -- 3. Every search runs against the WHOLE listing.
+  --
+  -- The engine's own ends with `self.rows = results` (:1358) and self.rows is
+  -- also the list it searches, so on the cart a second search can only narrow
+  -- the first -- and nothing puts the full list back except an actual mode
+  -- change, :rebuild()'s only other caller (:1144-1148), or closing the dex.
+  -- Searching FIRE and then WATER answers "No <PK><MN> found!" on a roster
+  -- full of both, with no way out of it the screen mentions.
+  --
+  -- Restored through :rebuild() rather than from a list kept here, so this
+  -- composes with this file's own rebuild wrap instead of racing it: the
+  -- widened dex view and the save's current seen/caught flags are what get
+  -- rebuilt, exactly as they are for a mode change.
+  local originalBeginSearch = PokedexMenu.beginSearch
+  function PokedexMenu:beginSearch()
+    local rows, index, scroll = self.rows, self.index, self.scroll
+    -- A rebuild that failed leaves the previous rows in place, which is the
+    -- behaviour this replaces rather than a broken screen.
+    pcall(function() self:rebuild() end)
+    self.nationalDexSearchIds = true
+    local ok, err = pcall(originalBeginSearch, self)
+    self.nationalDexSearchIds = nil
+    -- Nothing matched, or the search itself failed.  Either way the engine
+    -- left the listing alone and the player is still on the search screen, so
+    -- the rows they had are put back -- widening the list behind an error
+    -- message would throw away the result set they are still standing in.
+    if not ok or self.searchMessage then
+      self.rows, self.index, self.scroll = rows, index, scroll
+    end
+    if not ok then error(err, 0) end
+  end
+
   -- ------- alternate forms
   --
   -- NOT on LEFT/RIGHT, which is the one place this deliberately parts company
@@ -565,19 +1155,290 @@ function M.install(generation, buildFormList, resolveArt)
     self.formId = list[self.formIndex]
   end
 
+  -- ------- hold UP/DOWN to fast-scroll the listing, LEFT/RIGHT to page it
+  --
+  -- Gold reads UP and DOWN as EDGES only (src/ui/gen2/PokedexMenu.lua:373-380
+  -- -- `input:wasPressed`, one row, then `return`), so holding one moves the
+  -- cursor once and stops.  That is the whole of the cart's listing input on
+  -- those keys; there is no held-frame counter on this class to lean on the
+  -- way the Gen 1 list has one, so the counter is kept here, under this mod's
+  -- own name on a class it does not own.
+  --
+  -- LEFT and RIGHT it reads NOWHERE on this view: that same branch runs B,
+  -- SELECT, START, UP, DOWN and A and then falls off the end, and the only
+  -- LEFT/RIGHT this class binds at all are the entry screen's action bar
+  -- (:333-336), the AREA map and the UNOWN screen -- none of which is the
+  -- listing.  So the page jump takes two free keys rather than a neighbour's,
+  -- and it is bound on the LIST view alone: the entry bar below still walks on
+  -- exactly the keys it walked on before.
+  --
+  -- The row profile is src/dexscroll.lua's GEN2 and the page profile its PAGE,
+  -- the same table Gen 1's page jump runs on -- one gesture, one clock.
+  local profile = type(scroll) == "table" and scroll.GEN2 or nil
+  local pageProfile = type(scroll) == "table" and scroll.PAGE or nil
+  local rateFor = type(scroll) == "table" and scroll.rate or nil
+  local delayFor = type(scroll) == "table" and scroll.delay or nil
+
+  -- One page is however many rows this class windows, measured off the class
+  -- itself.  A measurement that fails takes the page jump down with it --
+  -- LEFT/RIGHT go back to doing what the cart does with them here, which is
+  -- nothing -- and says so, because a feature that is silently present on one
+  -- game and absent on the other is the version of this that costs a player an
+  -- evening working out which.
+  local pageRows = nil
+  if pageProfile and rateFor and delayFor then
+    pageRows = M.visibleRows(PokedexMenu.ensureVisible)
+    if not pageRows and mod and mod.log then
+      mod.log:info("Gold's #DEX listing does not report how many rows it "
+        .. "shows -- LEFT/RIGHT stay unbound there rather than jumping by a "
+        .. "page size this mod guessed at")
+    end
+  end
+
+  -- One repeat step, with the SAME wrap the engine's own branch does -- up on
+  -- the first row lands on the last and down on the last returns to the first.
+  -- Repeated rather than called: those two lines sit inside the update branch
+  -- and this class exposes no cursor helper, and a held direction that stopped
+  -- dead at an end while a tapped one wrapped would be the two disagreeing
+  -- about the same list.
+  local function holdStep(self, dir)
+    local rows = self.rows
+    if type(rows) ~= "table" or #rows == 0 then return end
+    if dir == "up" then
+      self.index = self.index > 1 and self.index - 1 or #rows
+    else
+      self.index = self.index < #rows and self.index + 1 or 1
+    end
+    self:ensureVisible()
+  end
+
+  -- One page, CLAMPED at both ends rather than wrapped.
+  --
+  -- The rows above wrap because the cart's own UP/DOWN wrap and a held
+  -- direction disagreeing with a tapped one would be worse than no hold at
+  -- all.  This jump has no cart behaviour to match, so what it copies is Gen
+  -- 1's, which clamps: src/ui/ListMenu.lua:95-98 wraps only for a list whose
+  -- owner asked for it and the dex list does not (src/ui/PokedexMenu.lua:49).
+  -- Held at six pages a second a wrapping jump would cycle 1025 rows forever
+  -- and never arrive; clamped, holding RIGHT reaches the last page and waits
+  -- there, which is what a player holding it is asking for.
+  local function pageStep(self, step)
+    local rows = self.rows
+    if type(rows) ~= "table" or #rows == 0 then return end
+    local index = (self.index or 1) + step * pageRows
+    self.index = math.max(1, math.min(#rows, index))
+    self:ensureVisible()
+  end
+
+  local function clearHold(self)
+    self.nationalDexHoldDir, self.nationalDexHoldFrames = nil, 0
+  end
+
+  local function listHold(self)
+    local input = self.game and self.game.input
+    if not input or type(input.isDown) ~= "function" then return clearHold(self) end
+    -- B closed the listing on this very frame.  A direction still under the
+    -- player's thumb must not walk the cursor on the way out.
+    if input:wasPressed("b") then return clearHold(self) end
+    if input:wasPressed("up") then
+      self.nationalDexHoldDir, self.nationalDexHoldFrames = "up", 0
+    elseif input:wasPressed("down") then
+      self.nationalDexHoldDir, self.nationalDexHoldFrames = "down", 0
+    elseif pageRows and input:wasPressed("left") then
+      -- Unlike UP/DOWN, the FIRST step of a page jump is taken here too: the
+      -- engine's own branch has already run and read neither key, so nothing
+      -- else on this frame is going to move the cursor.
+      pageStep(self, -1)
+      self.nationalDexHoldDir, self.nationalDexHoldFrames = "left", 0
+    elseif pageRows and input:wasPressed("right") then
+      pageStep(self, 1)
+      self.nationalDexHoldDir, self.nationalDexHoldFrames = "right", 0
+    end
+    local dir = self.nationalDexHoldDir
+    if not (dir and input:isDown(dir)) then return clearHold(self) end
+    -- WHICH profile depends on what is held, exactly as the Gen 1 arm decides
+    -- it (src/dexscroll.lua's accelerate): a page carries seven rows, so it
+    -- cannot be timed by the clock that carries one.
+    local paging = dir == "left" or dir == "right"
+    local held = paging and pageProfile or profile
+    -- The same arithmetic the Gen 1 list already runs
+    -- (src/ui/ListMenu.lua:186-189): nothing repeats until `delay` frames have
+    -- passed, and one step goes by every `rate` frames after that.  The rate is
+    -- asked for the count being tested, so a tier boundary lands on the frame
+    -- it names rather than one after it.
+    local frames = (self.nationalDexHoldFrames or 0) + 1
+    self.nationalDexHoldFrames = frames
+    local afterDelay = frames - delayFor(held)
+    if afterDelay >= 0 and afterDelay % rateFor(held, frames) == 0 then
+      if paging then
+        pageStep(self, dir == "left" and -1 or 1)
+      else
+        holdStep(self, dir)
+      end
+    end
+  end
+
+  -- ------- the fifth and sixth actions, and the pages behind them
+  --
+  -- `view` is this mod's own name on a field the class owns, for the same
+  -- reason every cache field here is: the engine's own update and drawPanel
+  -- both fall through to the LISTING for a view they do not know, so an
+  -- unrecognised value has to be intercepted before either of them sees it --
+  -- and a plain word like "stats" is a name a later engine release could
+  -- reasonably want for something else.
+  local STATS_VIEW = "nationalDexStats"
+  local MOVES_VIEW = "nationalDexMoves"
+
+  -- Whether the sixth slot is offered at all, decided ONCE here and read back
+  -- off the module's own builder table rather than assumed.  A partial table
+  -- counts as no table: every one of the three is needed to produce a page,
+  -- and half a feature that opens a blank box is the version of this a player
+  -- would have to file a bug about.
+  local builders = nil
+  if type(pageBuilders) == "table"
+    and type(pageBuilders.evolutionSections) == "function"
+    and type(pageBuilders.levelUpSection) == "function"
+    and type(pageBuilders.paginate) == "function" then
+    builders = pageBuilders
+  elseif mod and mod.log then
+    mod.log:info("Gold's #DEX entry keeps its five actions -- the evolution "
+      .. "and level-up page builders this mod hands to its Gen 2 screen did "
+      .. "not arrive, so the LVL action is not on the bar rather than being "
+      .. "there and opening nothing")
+  end
+
+  local ACTIONS = M.barActions(builders ~= nil)
+  local ACTION_COUNT = #ACTIONS
+  -- Which slot is which, off the list actually installed rather than off a
+  -- literal: with the sixth slot declined the fifth is still the last, and a
+  -- hard-coded 6 would then dispatch a slot the bar does not have.
+  local STATS_SLOT, MOVES_SLOT
+  for index, action in ipairs(ACTIONS) do
+    if action == M.STATS_ACTION then STATS_SLOT = index end
+    if action == M.MOVES_ACTION then MOVES_SLOT = index end
+  end
+
+  -- The stats page's own keys, which are the AREA page's
+  -- (PokedexMenu:updateArea, :818-824): A or B goes back to the entry screen.
+  -- UP/DOWN keep cycling forms here too -- comparing a form's numbers against
+  -- its base species' is most of what this page is for, and being sent back
+  -- to the entry screen to change form and then in again would make that
+  -- comparison cost four presses instead of one.
+  local function statsInput(self)
+    local input = self.game and self.game.input
+    if not input then return end
+    if input:wasPressed("a") or input:wasPressed("b") then
+      self.view = "entry"
+      return
+    end
+    if input:wasPressed("up") then
+      cycleForm(self, -1)
+    elseif input:wasPressed("down") then
+      cycleForm(self, 1)
+    end
+  end
+
+  -- The pages the LVL view is showing, for whatever record is on screen.
+  -- Declared here and assigned beside the cache that builds them: the input
+  -- below has to clamp against how many there are, and it belongs next to the
+  -- other views' input rather than three hundred lines away from it.
+  local movePagesFor
+
+  -- The LVL view's keys.
+  --
+  -- A and B leave, exactly as they do on the STATS page and the cart's own
+  -- AREA map -- one way out of every page this mod adds.
+  --
+  -- UP/DOWN page, which is the Gen 1 strip's own gesture (src/dexpage.lua)
+  -- and is free HERE even though it is not free on the entry screen: this is
+  -- a view of its own, the branch below owns its input outright, and the
+  -- entry screen's form cycling is not reached from it.  Nothing a player
+  -- already uses is rebound -- UP/DOWN on the entry screen still cycle forms,
+  -- and the only reason they can page here is that this screen did not exist
+  -- until now.
+  --
+  -- LEFT/RIGHT cycle forms, which is the Gen 1 page's own binding for them
+  -- and leaves the whole view following the selection: the pages are built
+  -- from the SHOWN record, so a mega's own family and its own level-up list
+  -- are what a player lands on.  There is no action bar on this page for them
+  -- to walk instead -- the bar belongs to the entry screen, and A or B is
+  -- what gets back to it.
+  --
+  -- The page index is CLAMPED after a form step rather than reset: the
+  -- sections come in the same order for every form, so a step sideways lands
+  -- on the same kind of page, and resetting would punish exactly the
+  -- comparison LEFT/RIGHT is for.  A form with fewer pages than its
+  -- neighbour is what the clamp is for.
+  local function movesInput(self)
+    local input = self.game and self.game.input
+    if not input then return end
+    if input:wasPressed("a") or input:wasPressed("b") then
+      self.view = "entry"
+      return
+    end
+    local count = #movePagesFor(self)
+    if input:wasPressed("down") then
+      self.movePage = M.pageStepTo(self.movePage, 1, count)
+    elseif input:wasPressed("up") then
+      self.movePage = M.pageStepTo(self.movePage, -1, count)
+    elseif input:wasPressed("left") or input:wasPressed("right") then
+      cycleForm(self, input:wasPressed("left") and -1 or 1)
+      self.movePage = M.pageStepTo(self.movePage, 0, #movePagesFor(self))
+    end
+  end
+
   local originalUpdate = PokedexMenu.update
   function PokedexMenu:update(dt)
+    -- Owned outright rather than wrapped: the engine's update has no branch
+    -- for this view and would run the LISTING's keys under it -- B would close
+    -- the whole dex and A would reopen an entry.
+    if self.view == STATS_VIEW or self.view == MOVES_VIEW then
+      -- The entry bar's arrow blink is counted at the top of the engine's own
+      -- update (:310) so it keeps ticking on a frame with no input; a frame
+      -- spent on this page must not stall it, or the arrow comes back frozen.
+      self.entryBlink = (self.entryBlink or 0) + 1
+      pcall(self.view == STATS_VIEW and statsInput or movesInput, self)
+      return
+    end
     local entryView = self.view == "entry" and not self.newEntry
     local up, down = false, false
+    local left, right, aPressed = false, false, false
     if entryView then
       pcall(function()
         local input = self.game and self.game.input
         if not input then return end
         up, down = input:wasPressed("up"), input:wasPressed("down")
+        left, right = input:wasPressed("left"), input:wasPressed("right")
+        aPressed = input:wasPressed("a")
       end)
     end
+    -- The slot the arrow was on BEFORE the engine walked it over its own four.
+    local wasAction = self.entryAction
     local wasView = self.view
     originalUpdate(self, dt)
+    -- The bar the player is walking has six entries and the engine's has
+    -- four, so its answer is recomputed from the slot the arrow started on
+    -- rather than nudged afterwards: from PRNT its RIGHT wraps to PAGE, and
+    -- there is no correction that turns that into "on to STAT" without
+    -- knowing where the arrow was.  The engine's own elseif chain is mirrored
+    -- exactly -- a frame with RIGHT down never reaches the A branch -- so a
+    -- press cannot both move the arrow and fire what it moved off.
+    if entryView then
+      if right or left then
+        self.entryAction = M.barStep(wasAction, right and 1 or -1, ACTION_COUNT)
+      elseif aPressed and wasAction == STATS_SLOT then
+        -- The engine's own A branch already ran and did nothing at all: its
+        -- ENTRY_ACTIONS has four entries, so ENTRY_ACTIONS[5] is nil and every
+        -- arm of its dispatch was skipped.  This is the whole of the action.
+        self.view = STATS_VIEW
+      elseif aPressed and MOVES_SLOT and wasAction == MOVES_SLOT then
+        -- Always from the FIRST page.  The player asked to see this species'
+        -- pages, not to resume wherever the last species' were left, and the
+        -- first page is the evolution line whenever there is one.
+        self.view = MOVES_VIEW
+        self.movePage = 1
+      end
+    end
     -- Opening an entry always starts on the base species.  Without this the
     -- selection is sticky across the whole session: browse to MEGA VENUSAUR,
     -- back out, and every later visit to BULBASAUR would open already showing
@@ -592,6 +1453,22 @@ function M.install(generation, buildFormList, resolveArt)
     -- form underneath it.
     if (up or down) and self.view == "entry" then
       pcall(cycleForm, self, up and -1 or 1)
+    end
+    -- Only while the listing is the live view.  A opening an entry, SELECT
+    -- opening OPTION and START opening SEARCH all leave on a frame where a
+    -- direction may still be held, and the else arm is what makes the hold
+    -- die there rather than resuming when the player comes back -- returning
+    -- to a listing has to feel like arriving at it, not like walking into a
+    -- scroll already in progress.
+    --
+    -- The SEARCH results are this same view: Pokedex_SearchForMons replaces
+    -- self.rows and sets the view back to "list"
+    -- (src/ui/gen2/PokedexMenu.lua:1352-1356), so a result set long enough to
+    -- want fast-scrolling gets it with no second case here.
+    if profile and rateFor and delayFor and self.view == "list" then
+      pcall(listHold, self)
+    else
+      clearHold(self)
     end
   end
 
@@ -694,6 +1571,78 @@ function M.install(generation, buildFormList, resolveArt)
     originalDrawPic(self, row, tx, ty, ownColors)
   end
 
+  -- The browsed form's label, prettied, or nil when the row's own species is
+  -- what is on screen.  One function because two screens print it -- the entry
+  -- page in the category slot and the stats page under the name -- and a
+  -- second copy is how they would end up spelling MEGA X two ways.
+  local function formLabel(self, species)
+    local formId = self.formId
+    if not (formId and species and formId ~= species
+      and self.formBase == species) then
+      return nil
+    end
+    local record = self.pokemon and self.pokemon[formId]
+    local label = type(record) == "table" and record.form or nil
+    if type(label) ~= "string" then return nil end
+    return (label:gsub("_", " "))
+  end
+
+  -- ------- the action bar, redrawn over the cart's own
+  --
+  -- The engine prints its four-word row and parks its arrow with
+  -- ENTRY_ACTION_X, which has four entries -- so on the fifth slot its arrow
+  -- falls back to column 1 and its string never mentions STAT.  Rather than
+  -- reimplement the whole of drawEntryBody to change one row, the row is
+  -- blanked and reprinted: exactly the ClearBox the cart itself lays there
+  -- (PokedexMenu.lua:924, 18 columns from column 1) and then this bar's own
+  -- window over it.  On the four slots the cart already had, what lands is
+  -- character-for-character what it drew -- see M.barLayout's own note.
+  --
+  -- Column 0's end cap is left alone: the blank starts at column 1, which is
+  -- where the cart's does, and the cap is part of the frame rather than of the
+  -- bar.
+  local BAR_ROW = 17
+  -- One layout per slot, built on first use.  There are six of them and the
+  -- bar is laid out once per frame the entry screen is up, so this is the
+  -- difference between six tables for the life of the process and six a
+  -- frame for as long as a player reads a dex entry.
+  local barCache = {}
+  local function barFor(slot)
+    local key = type(slot) == "number" and slot or 0
+    local layout = barCache[key]
+    if not layout then
+      layout = M.barLayout(slot, ACTIONS, M.BAR_SLOTS)
+      barCache[key] = layout
+    end
+    return layout
+  end
+
+  local function drawActionBar(self)
+    local layout = barFor(self.entryAction)
+    -- The row's WHOLE width, and one column wider than the ClearBox the cart
+    -- lays here (PokedexMenu.lua:924, 18 columns from column 1).  The cart can
+    -- stop at 18 because its own 19-cell string covers the nineteenth cell
+    -- itself -- Chrome.printThrough paints its own ground behind every string
+    -- -- and so could this bar while its every window was also 19 cells.  The
+    -- sixth slot's window is 18 (see M.BAR_ACTIONS' measurements), so that
+    -- last cell now has to be cleared rather than covered, or the "T" the
+    -- cart's own PRNT left there stands beside this mod's shorter row.
+    --
+    -- _NewPokedexEntry's own ByteFill of this row is 19 wide
+    -- (pokedex.asm:2540-2545), so 19 is the cart's own answer to "the whole
+    -- bar row" rather than a column borrowed from somewhere else.
+    self:blank(M.BAR_COLUMN, BAR_ROW, M.BAR_COLUMNS, 1)
+    self:text(layout.text, M.BAR_COLUMN, BAR_ROW)
+    -- Blinking and drawn through the dex's inverted palette, because that is
+    -- what the cart's arrow does on this bar (PokedexMenu.lua:944-947) and a
+    -- fifth entry that marked itself differently would read as a different
+    -- kind of thing.
+    if self:cursorVisible() then
+      Chrome.cursorThrough(layout.arrow, BAR_ROW,
+        self.gfx and self.gfx.palette, true)
+    end
+  end
+
   -- A form's label goes where the base species' category sits.  Nothing else
   -- on the page moves: No., name, height, weight and the description stay the
   -- BASE species' own, because `entry` here is still the row's own dex record
@@ -703,19 +1652,297 @@ function M.install(generation, buildFormList, resolveArt)
   -- function can reach a form record's `dex` at all.
   local originalBody = PokedexMenu.drawEntryBody
   function PokedexMenu:drawEntryBody(row, entry)
-    local formId = self.formId
-    if formId and row and formId ~= row.species and self.formBase == row.species
-      and type(entry) == "table" then
-      local record = self.pokemon and self.pokemon[formId]
-      local label = type(record) == "table" and record.form or nil
-      if type(label) == "string" then
-        local copy = {}
-        for key, value in pairs(entry) do copy[key] = value end
-        copy.kind = (label:gsub("_", " "))
-        entry = copy
+    local label = row and formLabel(self, row.species) or nil
+    if label and type(entry) == "table" then
+      local copy = {}
+      for key, value in pairs(entry) do copy[key] = value end
+      copy.kind = label
+      entry = copy
+    end
+    originalBody(self, row, entry)
+    -- After, so it lands over the cart's own row.  _NewPokedexEntry fills that
+    -- row away and shows no bar at all (:926-927), and neither does this.
+    if not self.newEntry then pcall(drawActionBar, self) end
+  end
+
+  -- ------- the STATS page, and the LVL view's pages beside it
+  --
+  -- Every evolution record either page has asked for, by id, `false` standing
+  -- for "asked, there is nothing".  Keyed by id rather than held with the
+  -- species being shown, because drawing ONE species' family reads its
+  -- relatives' records too, and a relative is very often the next species the
+  -- player steps to -- Bulbasaur, Ivysaur and Venusaur cost three lookups
+  -- between them rather than nine.  evolutionsOf deep-copies a whole record
+  -- per call, which is why the second ask has to be a table read.  The same
+  -- arrangement, for the same reason, as src/dexpage.lua's own.
+  local chains = {}
+  local function evolutionFor(id)
+    if type(id) ~= "string" then return nil end
+    local found = chains[id]
+    if found == nil then
+      found = false
+      local ask = mod and mod.exports and mod.exports.evolutionsOf
+      if type(ask) == "function" then
+        local ok, reply = pcall(ask, id)
+        if ok and type(reply) == "table" then found = reply end
+      end
+      chains[id] = found
+    end
+    return found or nil
+  end
+
+  -- Everything the page prints for one species or form, built once and kept:
+  -- statsBySpecies deep-copies a whole record and its extras, which is the
+  -- right price for a cross-mod call and far too much to pay every frame for
+  -- an answer that cannot change while the game runs.  Cached on the module's
+  -- own closure rather than per menu instance for the same reason the answer
+  -- is stable -- species data is not a property of a screen.  A species the
+  -- API has nothing for is remembered too, as the page built from what the
+  -- menu already holds, so a miss costs one call rather than one per frame.
+  --
+  -- Asked for by the SHOWN record's id, form and base species alike, so a
+  -- browsed form's own numbers and its own ability are what appear.  The reply
+  -- is also the fallback's alternative rather than its replacement: with no
+  -- API to ask -- src/api.lua failed to load, or a species it has nothing for
+  -- -- the registered record on the menu itself still carries base stats and
+  -- typing, and only the ability rows are lost.
+  local pages = {}
+  local function statsPage(self, id)
+    if type(id) ~= "string" then return nil end
+    local page = pages[id]
+    if page == nil then
+      local reply
+      local lookup = mod and mod.exports and mod.exports.statsBySpecies
+      if type(lookup) == "function" then
+        local ok, answer = pcall(lookup, id)
+        if ok and type(answer) == "table" then reply = answer end
+      end
+      local record = reply or (self.pokemon and self.pokemon[id]) or nil
+      local abilities
+      if reply and type(abilityRows) == "function" then
+        local ok, list = pcall(abilityRows, reply.abilities)
+        if ok and type(list) == "table" and #list > 0 then abilities = list end
+      end
+      local first, second = M.typeNames(record)
+      page = { rows = M.statRows(record), type1 = first, type2 = second,
+               abilities = abilities }
+      -- The LVL view's pages come out of the SAME reply, in the same entry:
+      -- the level-up list and the abilities are two fields of one deep copy,
+      -- and asking statsBySpecies twice would pay for that copy twice.  They
+      -- are laid out the moment either page is first built rather than when
+      -- the player walks onto them -- four pages at the very worst is a few
+      -- hundred table stores, once, against holding the copied record alive
+      -- for every species browsed in a session.
+      --
+      -- Asked for by the record's OWN id, base species and form alike.  A
+      -- form with no line of its own answers nil and gets no evolution page:
+      -- Mega Charizard X does not evolve from Charmeleon at level 36, and
+      -- falling back to the base species' chain here would say it does.
+      if builders then
+        page.movePages = M.movePages(builders, evolutionFor(id), evolutionFor,
+          reply)
+      else
+        page.movePages = {}
+      end
+      pages[id] = page
+    end
+    return page
+  end
+
+  -- The LVL view's pages for whatever record is on screen -- the browsed form
+  -- while one is selected, so the family and the learnset follow the
+  -- selection exactly as the stats and the abilities beside them do.
+  -- Assigned rather than declared: the name was reserved above, beside the
+  -- input that walks these pages.
+  movePagesFor = function(self)
+    local row = self:current()
+    if not row then return {} end
+    local page = statsPage(self, shownSpecies(self, row.species))
+    return (page and page.movePages) or {}
+  end
+
+  -- The page's furniture, in Gold's own units.  Pokedex_PlaceBorder is b
+  -- interior rows by c interior columns; the entry screen's box is 15 by 18
+  -- and leaves the screen's last row for its action bar.  This page has no
+  -- action bar, so it takes that row: 16 interior rows, which is every row a
+  -- bordered box can have on an 18-row screen.
+  --
+  -- It needs all sixteen.  Name, category, two type lines, an ABILITIES label,
+  -- up to three ability rows and the seven stat rows are fifteen rows of
+  -- content, so exactly one is left for a rule, and it goes under the header
+  -- where the cart's own entry screen puts its one (PokedexMenu.lua:921).  The
+  -- rule that used to sit between the ability and the stats is what the two
+  -- extra ability rows cost; the blank rows a species with fewer abilities
+  -- leaves behind separate them instead.
+  --
+  -- Unlike the entry screen this page is NOT drawn under the 5-pixel scroll
+  -- (PokedexMenu:drawArea does the same for the same reason), so its columns
+  -- are the screen's own.
+  local STATS_INTERIOR_ROWS = 16
+  local STATS_DIVIDER = { 3 }
+  local ROW_NAME, ROW_KIND = 1, 2
+  local ROW_TYPE, ROW_TYPE2 = 4, 5
+  local ROW_ABILITY_LABEL, ROW_ABILITY_FIRST = 6, 7
+  local ROW_STATS = 10
+  -- The dex sheet's own '№' pair and the rule tile, out of
+  -- PokedexMenu.lua:70-71 and :76 -- neither is exported and neither is a font
+  -- glyph, so they are named here and simply do not draw on a cache with no
+  -- dex sheet in it.
+  local TILE_NO_1, TILE_NO_2, TILE_RULE = 0x5c, 0x5d, 0x61
+  -- The sheet's background cell, which every dex screen fills from
+  -- (PokedexMenu.lua:61) and which is likewise not exported.
+  local TILE_BG_ID = 0x32
+  -- Values are right-aligned into a four-wide field ending at the box's last
+  -- column: four rather than three because TOTAL runs past 999 on the strongest
+  -- records this mod carries, and one field for every row keeps the column
+  -- straight.
+  local VALUE_COLUMN, VALUE_WIDTH = 15, 4
+
+  -- The box both of this mod's pages stand in, drawn once for the two of them
+  -- so they cannot end up different sizes -- every row coordinate on either
+  -- page is counted off this interior.
+  local function drawBox(self)
+    if self:styled() then
+      self:fill(TILE_BG_ID, 0, 0, Chrome.SCREEN_W, Chrome.SCREEN_H)
+      self:border(0, 0, STATS_INTERIOR_ROWS, 18)
+    else
+      -- A cache imported before the dex sheet was extracted has no tiles at
+      -- all, and the two calls above would then paint the page BLACK -- fill
+      -- draws nothing, but :border's interior is a blank rectangle -- with
+      -- black text printed onto it.  PokedexMenu:drawPlain answers exactly
+      -- this with Chrome's own white box, so this page does too rather than
+      -- being the one dex screen that goes dark on an old cache.
+      Chrome.clear()
+      Chrome.box(0, 0, Chrome.SCREEN_W, Chrome.SCREEN_H)
+    end
+  end
+
+  local function drawStats(self)
+    local row = self:current()
+    if not row then return end
+    local shown = shownSpecies(self, row.species)
+    local page = statsPage(self, shown)
+    if not page then return end
+
+    drawBox(self)
+
+    self:text(self:monName(row.species), 1, ROW_NAME)
+    -- The BASE species' number, off the row's own dex entry -- the row never
+    -- moves onto a form (M.newSpecies refuses to list one), so the synthetic
+    -- `dex` a form carries is not reachable from here at all.  Same rule, and
+    -- the same construction, as the entry screen beside it.
+    local entry = self.dex and self.dex.entries and self.dex.entries[row.species]
+    self:tile(TILE_NO_1, 13, ROW_NAME)
+    self:tile(TILE_NO_2, 14, ROW_NAME)
+    self:text(PokedexMenu.printNumString(
+      (type(entry) == "table" and entry.dex) or 0, 3, true), 15, ROW_NAME)
+
+    -- The form's label where the entry screen puts it, and the species'
+    -- category when no form is browsed, so the two pages name the same thing
+    -- in the same place.
+    local label = formLabel(self, row.species)
+      or (type(entry) == "table" and entry.kind) or ""
+    self:text(label, 1, ROW_KIND)
+
+    for _, y in ipairs(STATS_DIVIDER) do
+      for x = 1, 18 do self:tile(TILE_RULE, x, y) end
+    end
+
+    self:text("TYPE", 1, ROW_TYPE)
+    if page.type1 then self:text(page.type1, 7, ROW_TYPE) end
+    if page.type2 then self:text(page.type2, 7, ROW_TYPE2) end
+
+    -- Every ability the species can have, one per row, the hidden one marked
+    -- in column 1 -- the margin the names were already indented past.  The
+    -- label is plural because the rows are alternatives: an individual
+    -- Totodile has Torrent or Sheer Force, never both, so ABILITY over three
+    -- names would be a claim about the mon rather than about the species.
+    --
+    -- A record with no ability data prints neither the label nor a row: a
+    -- bare ABILITIES over empty rows reads as "this one has none", which is a
+    -- statement, and a wrong one.  src/dexpage.lua's page holds to the same
+    -- rule for the same reason, and to the same order, because both pages ask
+    -- its abilityRows.
+    if page.abilities then
+      self:text("ABILITIES", 1, ROW_ABILITY_LABEL)
+      for index, row in ipairs(page.abilities) do
+        local y = ROW_ABILITY_FIRST + index - 1
+        -- Name at column 3, not 2, so a blank cell always separates it from
+        -- the mark: at column 2 the H abuts the name and the two read as one
+        -- word -- HSHEER FORCE.  The gap has to come out of the name here
+        -- rather than the margin, because column 0 is the box border and the
+        -- mark cannot move further left.  Every name is indented, marked or
+        -- not, so the column stays straight.
+        if row.hidden and type(hiddenMark) == "string" then
+          self:text(hiddenMark, 1, y)
+        end
+        self:text(row.name, 3, y)
       end
     end
-    return originalBody(self, row, entry)
+
+    for index, stat in ipairs(page.rows) do
+      local y = ROW_STATS + index - 1
+      self:text(stat[1], 1, y)
+      self:text(PokedexMenu.printNumString(stat[2], VALUE_WIDTH, false),
+        VALUE_COLUMN, y)
+    end
+  end
+
+  -- ------- the LVL page
+  --
+  -- A title, the rule under it, and up to fourteen rows -- and not one
+  -- coordinate decided here.  M.pageLayout settled where every string goes
+  -- without a screen in the room, including the right-aligned columns, which
+  -- this page can do purely where the Gen 1 one has to measure a proportional
+  -- font first: on a tile grid a glyph is a cell.
+  --
+  -- The marked row's mark is Gold's own cursor tile through the dex's
+  -- inverted palette, drawn steadily rather than on the entry bar's blink --
+  -- it marks a row rather than inviting a press.
+  local function drawMoves(self)
+    local row = self:current()
+    if not row then return end
+    local list = movePagesFor(self)
+    -- Clamped on the way IN as well as on every step, so a page index left
+    -- over from a longer form cannot outlive the selection that produced it.
+    local index = M.pageStepTo(self.movePage, 0, #list)
+    self.movePage = index
+    local page = list[index]
+    if not page then return end
+
+    drawBox(self)
+    for x = M.PAGE_LEFT, M.PAGE_RIGHT do
+      self:tile(TILE_RULE, x, M.PAGE_RULE_ROW)
+    end
+    for _, item in ipairs(M.pageLayout(page, formLabel(self, row.species))) do
+      if item.cursor then
+        Chrome.cursorThrough(item.x, item.y, self.gfx and self.gfx.palette, true)
+      else
+        self:text(item.text, item.x, item.y)
+      end
+    end
+  end
+
+  local originalPanel = PokedexMenu.drawPanel
+  function PokedexMenu:drawPanel()
+    local draw
+    if self.view == STATS_VIEW then
+      draw = drawStats
+    elseif self.view == MOVES_VIEW then
+      draw = drawMoves
+    else
+      return originalPanel(self)
+    end
+    local G = love.graphics
+    -- Every dex screen starts from a full-screen fill (:1420-1423), so the
+    -- frame under this one is the same black the others sit on.
+    G.setColor(0, 0, 0, 1)
+    G.rectangle("fill", 0, 0, Chrome.SCREEN_W * 8, Chrome.SCREEN_H * 8)
+    local ok = pcall(draw, self)
+    -- A page that could not be drawn falls back to the screen the player came
+    -- from rather than to a black rectangle they cannot read their way out of.
+    if not ok then pcall(function() self:drawEntry() end) end
+    G.setColor(1, 1, 1, 1)
   end
 
   installed = true
@@ -752,8 +1979,11 @@ function M.byName(pokemon, ids)
   return out
 end
 
-setmetatable(M, { __call = function(_, generation, buildFormList, resolveArt)
-  return M.install(generation, buildFormList, resolveArt)
+setmetatable(M, { __call = function(_, generation, buildFormList, resolveArt,
+                                    scroll, mod, abilityRows, hiddenMark,
+                                    pageBuilders)
+  return M.install(generation, buildFormList, resolveArt, scroll, mod,
+    abilityRows, hiddenMark, pageBuilders)
 end })
 
 return M

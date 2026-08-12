@@ -35,6 +35,9 @@ because an optional dependency is missing is a mod that breaks someone's game.
 
 Check `apiVersion` with `>=`, never `==`. It rises only when an existing field
 changes meaning or disappears; new fields are added without bumping it.
+`apiVersion` is `3` as of this release: `moveById`/`listMoves` arrived at `2`,
+`evolutionsOf`/`listEvolutions` at `3`, and nothing that existed at `1` or `2`
+has changed meaning since.
 
 ---
 
@@ -88,6 +91,69 @@ A narrow helper predating the rest: `{ spAttack, spDefense }` or `nil`. Prefer
 `statsBySpecies(id).stats`, which carries the same numbers alongside everything
 else.
 
+### `moveById(id)`
+
+The complete PokeAPI record for one of the 833 modern moves, or `nil` for an
+id this mod has no data for — the realistic case is one of the cart's own
+moves that nothing in the national dex learns.
+
+```lua
+local flamethrower = dex.exports.moveById("FLAMETHROWER")
+flamethrower.power        --> 90
+flamethrower.meta.ailment --> "burn"
+```
+
+`id` is the one the move is *registered* under — the engine's own spelling
+where the cart already had the move (`PSYCHIC_M`, not `PSYCHIC`). The reply
+also carries `strippedId`, the separator-free spelling `movesFull` and
+`movesByMethod` (below) use, for reconciling the two. `gen1EffectModeled` /
+`gen2EffectModeled` say whether the move's registered effect is its real
+behaviour or a placeholder — see [Extended data](#extended-data).
+
+### `listMoves()`
+
+Every move id this mod carries data for, sorted. Thin on purpose, like
+`listSpecies`: build a menu or check membership from this, then ask
+`moveById` for the one move you actually need.
+
+### `evolutionsOf(idOrDex)`
+
+What to **draw** for one species' evolution chain — the whole line, not just
+the one step in or out — or `nil` for an id this mod has no data for.
+
+```lua
+local eevee = dex.exports.evolutionsOf("EEVEE")
+eevee.chain      --> every id in the family, root first
+#eevee.chain     --> 9  (Eevee plus its eight eeveelutions)
+eevee.stage      --> 1  (Eevee's own depth in that chain)
+```
+
+A dex number resolves to the species that owns it, so an alternate form with
+its own evolution — Galarian Yamask into Runerigus, say — is only reachable
+by id; a dex number always answers for the base species. A form with no
+evolution of its own returns `nil` rather than borrowing its base species':
+Mega Charizard X does not evolve from Charmeleon at level 36, and answering
+as if it did would be an invention.
+
+Each record carries `chainId` (PokeAPI's chain number, for recognising
+relatives without walking anything), `evolvesFrom` and `evolvesInto` (each
+`{ id, dex, name, text, methods }` or, for `evolvesFrom`, `nil` at the root),
+and `methods` — every distinct way that step is known to happen, PokeAPI's
+current one first, each carrying a human-readable `text` plus the raw
+condition fields (`level`, `item`, `heldItem`, `location`, `timeOfDay`,
+`minHappiness`, `knownMove`, `gender`, `region`, `tradeSpecies`, …) so you can
+word it your own way instead of being stuck with the sentence.
+
+**This is display data, not the registered `evolutions` field** — see
+[Three things to get right](#three-things-to-get-right) below. Never feed
+anything read from here to something that evolves a mon.
+
+### `listEvolutions()`
+
+Every id this mod carries evolution data for, sorted — the species plus the
+alternate forms that evolve differently from their base. Thin, like
+`listSpecies` and `listMoves`.
+
 ---
 
 ## What a reply contains
@@ -109,7 +175,7 @@ fields added later reach you without this API being changed to let them through.
 | `baseStats` | the raw stat block, untouched — shape follows the schema: `special` on Red/Blue/Yellow, `specialAttack`/`specialDefense` on Gold |
 | `learnset` | level-up moves **filtered to moves this engine knows** (Red/Blue/Yellow; Gold has one `levelMoves` table instead — see [Reading a reply on Gold](#reading-a-reply-on-gold)) |
 | `level1Moves` | starting moveset, same filtering (Red/Blue/Yellow only, same note as `learnset`) |
-| `evolutions` | evolution data — target species key is `species` on Red/Blue/Yellow, `into` on Gold |
+| `evolutions` | the engine's own registered field (target species key is `species` on Red/Blue/Yellow, `into` on Gold) — empty on every record this mod supplies; **see [Three things to get right](#three-things-to-get-right)** |
 | `growthRate` | engine growth-rate id |
 | `catchRate`, `baseExp` | as the engine reads them |
 | `dexEntry` | `kind`, height, weight, and the id of its description text |
@@ -193,12 +259,23 @@ attached the same way regardless of which game is running.
 
 ---
 
-## Two things to get right
+## Three things to get right
 
 **Never display a form's `dex`.** A form registers under a synthetic key far
 above the real roster (Mega Charizard Y is `30035`) purely so it can exist
 without colliding with its base species. It is not a dex number. Use `baseDex`
 — Mega Charizard X and Y are both **No. 006**, exactly as in the real games.
+
+**`reply.evolutions` is (almost always) empty — ask `evolutionsOf` instead.**
+The engine's own `evolutions` field takes a method from a fixed vocabulary,
+and most modern triggers — friendship, held item, time of day, a known move —
+have no honest id in it, so this mod never writes to that field on a record it
+supplies; putting an approximate id there would tell the engine a species
+evolves a way it does not. It stays real only on the handful of species the
+*engine itself* registers (1–151 on Red/Blue/Yellow, 1–251 on Gold) and this
+mod merely patches. If you want evolution data to draw — for any species,
+this mod's or the cart's — call `evolutionsOf`/`listEvolutions` above, and
+never feed either one to something that evolves a mon.
 
 **The reply is yours.** Every call returns a deep copy, nested tables included.
 Write to it freely; you cannot reach the data this engine reads. The reverse

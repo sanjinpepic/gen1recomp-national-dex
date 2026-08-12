@@ -1,0 +1,57 @@
+# This repository is data and code. No Pokemon artwork is distributed here,
+# and the rules below are written so that adding some by accident is not
+# possible in one careless `git add`.
+
+# ---- Artwork: deny by default -------------------------------------------
+# Every image format, anywhere in the tree. The two 922-byte placeholders
+# this project generated are the only exception, named explicitly so a new
+# image cannot slip in beside them under a similar name.
+*.png
+*.gif
+*.jpg
+*.jpeg
+*.bmp
+*.webp
+*.tga
+*.psd
+*.xcf
+*.ico
+*.svg
+!mod/assets/sets/placeholder/front.png
+!mod/assets/sets/placeholder/back.png
+
+# ---- Archives -------------------------------------------------------------
+# The release zip at the root is the one archive this repository carries,
+# and it is named explicitly.
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+!national_dex-*.zip
+
+# ---- The ROM and the engine -----------------------------------------------
+*.gb
+*.gbc
+*.sav
+/game/
+/launcher/
+
+# ---- Build output, caches and local notes ----------------------------------
+/dist/
+/reports/
+/pokeapi_cache/
+__pycache__/
+*.pyc
+node_modules/
+CLAUDE.md
+HANDOFF.md
+
+# ---- Editor / OS ------------------------------------------------------------
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.log
+*.bak

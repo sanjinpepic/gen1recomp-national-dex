@@ -179,6 +179,27 @@ return function(mod)
   local Dexpage = loadSibling(mod, "src/dexpage.lua")
   if Dexpage then Dexpage(mod, generation) end
 
+  -- Hold UP or DOWN on either game's dex LISTING to scroll faster the longer
+  -- it is held (src/dexscroll.lua).  Loaded before the two listing patches
+  -- below because Gold's arm is handed this module: the Gen 1 arm installs
+  -- itself from here, while the Gold listing's every other patch already lives
+  -- in src/gen2dexlist.lua and a second wrapper of that class from a second
+  -- file would only be two patches arguing over which runs first.
+  --
+  -- START on the Gen 1 listing cycles numerical / alphabetical / recorded
+  -- (src/dexview.lua).  It rides the same constructor wrap rather than
+  -- installing a second one -- the file explains which key it takes and why,
+  -- and a sibling that failed to load costs the view modes while leaving the
+  -- held scroll exactly as it was.  Gold is untouched by both: dexscroll's
+  -- Gen 1 arm returns immediately for generation 2, so nothing here reaches
+  -- Gold's #DEX, which has sort modes and a search of its own
+  -- (src/gen2dexlist.lua).
+  local Dexview = loadSibling(mod, "src/dexview.lua")
+  local Dexscroll = loadSibling(mod, "src/dexscroll.lua")
+  if Dexscroll then
+    Dexscroll(mod, generation, Dexview and Dexview.apply or nil)
+  end
+
   -- Gold draws neither of the screens above: its #DEX is its own class, sized
   -- from the cart's dex table rather than from the dexSize constant Gen 1
   -- reads, so the beyond-251 species this mod registers never reached the
@@ -203,8 +224,26 @@ return function(mod)
   local spriteArt = Gen2Dex and Gen2Dex.spriteArt(
     function(id) return mod:find(id) end,
     Dexpage and Dexpage.formCandidates) or nil
+  --
+  -- The STATS action on Gold's entry bar is the third thing in there, and the
+  -- LVL action beside it the fourth, and they are why this call takes the mod
+  -- handle: their pages read the base stats, typing, abilities, evolutions and
+  -- level-up learnset off mod.exports at draw time, the same surface the Gen 1
+  -- page uses.  Dexpage.abilityRows goes with it, and its hidden mark with
+  -- that, so both games list the same abilities in the same order and mark the
+  -- hidden one the same way -- and the last argument is the rest of that same
+  -- arrangement: the evolution line, the level-up section and the paginator
+  -- behind LVL are Dexpage's own, so the two games' pages cannot drift apart.
+  -- Gold cuts them into fourteen-row pages rather than twelve because its dex
+  -- box is taller, which is why paginate takes the count.
   if Gen2Dex then
-    Gen2Dex(generation, Dexpage and Dexpage.buildFormList, spriteArt)
+    Gen2Dex(generation, Dexpage and Dexpage.buildFormList, spriteArt, Dexscroll,
+      mod, Dexpage and Dexpage.abilityRows, Dexpage and Dexpage.HIDDEN_MARK,
+      Dexpage and {
+        evolutionSections = Dexpage.evolutionSections,
+        levelUpSection = Dexpage.levelUpSection,
+        paginate = Dexpage.paginate,
+      } or nil)
   end
 
   -- Gold's party SUMMARY has the same two problems its #DEX had -- it reads

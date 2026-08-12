@@ -3,6 +3,189 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.21.0
+
+### Added
+
+- Gold's dex entry screen gains a sixth action-bar slot, LVL, opening a paged
+  view of its own: page 1 is the evolution line, then the level-up learnset.
+  Inside it, UP/DOWN page between the two, LEFT/RIGHT still cycle forms, and
+  A or B return to the entry screen; nothing on the entry screen itself was
+  rebound. Gold's box gives 14 content rows against Gen 1's 12, so a learnset
+  that is one page there can split across as many as four on Gold's own view
+  -- Gallade's 33-row list is the worst case; 207 records have a single
+  evolution chain and 85 have no level-up moves at all. The evolution mark on
+  this view is Gold's own cursor tile rather than a `>` glyph, since Gold's
+  charmap has no `>` and an unknown glyph encodes as a space. MACHINE, EGG,
+  TUTOR and OTHER are deliberately not included.
+
+### Fixed
+
+- The cart's own `PRNT` label bled into this mod's action-bar row. The cart
+  clears only 18 columns and relies on its own 19-cell string to cover the
+  last one, so an 18-cell redraw window here left its trailing "T" standing
+  beside the row. The redraw now clears the full 19 columns. That narrower
+  window is also why the new slot reads LVL rather than LEVEL: the six
+  actions show through a four-slot window, and with the sixth slot selected
+  `" CRY PRNT STAT LEVEL"` is 20 cells against the console's 19-cell width,
+  where `LVL` fits at 18.
+
+### Changed
+
+- `levelUpSection` was split out of `moveSections` in `src/dexpage.lua` so
+  Gold's LVL view can ask for the level-up section by name instead of taking
+  `moveSections`' first entry, which would have silently handed it the
+  MACHINE section for the 85 records with no level-up moves. Gen 1's own
+  movelist output is unchanged.
+
+
+## 0.20.1
+
+### Fixed
+
+- The hidden-ability mark ran into the name it qualifies, so the two read as
+  one word: HSNIPER, HSHEER FORCE. A blank cell separates them now. On the
+  Gen 1 page the mark moved a cell left into the margin, costing no name a
+  character; on Gold column 0 is the box border, so the names moved right
+  instead and every name is indented equally, marked or not, to keep the
+  column straight.
+
+
+## 0.20.0
+
+### Added
+
+- Both dex screens list every ability a species can have, not just the first,
+  with the hidden one marked and always last. The label is plural on purpose:
+  slots 1 and 2 are alternatives, so an individual has one of them, and a
+  singular label over three rows would say something untrue.
+
+### Fixed
+
+- Three on-screen markers were invisible. `<` and `>` appear in none of the
+  four character maps, and the font encoder turns an unknown glyph into a
+  space, so the evolution page's current-species mark and both form-cycling
+  arrows had never once reached the screen. They now use the engine's own
+  cursor tile. A test sweeps every string these pages draw against the real
+  map, since a character silently becoming a space is invisible to any
+  assertion that checks strings rather than encoded output.
+
+### Changed
+
+- The evolution pages are one page. The line, the marked species, and the
+  trigger beside each name as a short token -- `L16`, `LEAF`, `TRADE` -- so
+  all 341 chains still fit a single page where the full sentences split the
+  eight-branch families the page exists to show whole. A token followed by
+  `?` means the method carries a condition the token does not name.
+
+
+## 0.19.0
+
+### Added
+
+- The evolution page shows the WHOLE line, indented by stage, with the
+  species you are looking at marked. Branches indent under the species that
+  produces them, because depth is the only thing that says which one that
+  is. Trigger text is deliberately absent from this page: names only means
+  every one of the 341 chains fits a single page, where adding the sentences
+  splits Eevee -- the family the page exists to show whole.
+- Gold's dex list gains LEFT/RIGHT page jumps, seven rows a step, the same
+  timing Gen 1 uses. Ends clamp rather than wrap: at six pages a second a
+  wrapping jump would cycle the list forever.
+
+### Changed
+
+- Held UP/DOWN is slower again on both games, and Gold now shares Gen 1's
+  clock exactly. Gold was quicker because a held direction was its only way
+  across 1025 rows; the page jump above removes that reason. A ten-second
+  hold on Gold covered 267 rows and now covers 133.
+
+
+## 0.18.0
+
+### Added
+
+- A strip of pages under each dex entry, walked with DOWN and retraced with
+  UP: stats, then evolutions, then the full movelist by section. LEFT/RIGHT
+  still cycle forms on every page, and every page shows the selected form's
+  own data. A section with nothing in it produces no page at all.
+- List views on the Gen 1 listing, cycled with START: numerical, A-Z, and
+  seen-only. The mode is named on the title row along with the key, and the
+  cursor stays on the same species across a change.
+- A STATS entry on Gold's dex action bar, showing base stats, typing and the
+  ability. The bar scrolls rather than growing, because five slots do not fit
+  a 160px row and an overflowing cell would print outside the console frame.
+
+### Fixed
+
+- Gold's type search never matched PSYCHIC, on the stock cart as much as
+  here: the wheel holds a display name and records hold a constant id.
+- FAIRY was missing from that wheel, leaving 59 species unfindable by their
+  primary type.
+- A second search filtered the first one's results instead of the full list,
+  with no way back except changing sort mode or closing the dex.
+
+### Changed
+
+- Held UP/DOWN scrolls more slowly. The rate a tier names is also the
+  overshoot it costs: a player releases about twelve frames after seeing the
+  row go past, which was a dozen rows of backtracking at the old top speed.
+- Holding LEFT/RIGHT now repeats the page jump, on its own slower clock so a
+  tap cannot double-jump.
+
+
+## 0.17.0
+
+### Added
+
+- The STATS page shows the species' ability, under the type block on the
+  left. It follows the form you are looking at rather than the base species,
+  so cycling to Mega Charizard Y reads Drought where Charizard reads Blaze.
+
+### Notes
+
+- One name is shown: the lowest-numbered ordinary ability. Most species also
+  have a second and a hidden one, but there is room for one name and none for
+  the word that would distinguish them -- printing two under one label would
+  claim a slot-2 ability and a hidden ability are the same kind of thing.
+  Hidden abilities are skipped rather than ranked last, so a record carrying
+  only a hidden one prints nothing instead of promoting an ability no wild
+  Pokemon has.
+- The line flows with the type block instead of sitting at a fixed row: a
+  form can gain a type its base species lacks, and an anchored line would
+  leave a gap on one of the two.
+- Abilities do not ride on the registered record -- they are read through
+  this mod's own published API, the same surface any other mod would use,
+  and memoised per species because each call deep-copies a whole record.
+
+
+## 0.16.0
+
+### Added
+
+- Holding UP or DOWN on the dex list accelerates, on both games. The engine
+  already had a held-input counter on its list menu, switched off for the
+  dex; it is enabled with tiers on top rather than reimplemented. Gold had
+  none at all, so it gained one. A single tap still moves exactly one row,
+  and LEFT/RIGHT keep the page jump they already had on Gen 1.
+- Evolution data for every species: what it evolves from and into, the
+  trigger in readable form, and the whole chain so a page can walk it.
+  `evolutionsOf(idOrDex)` and `listEvolutions()` on the read API,
+  `API_VERSION` is now 3.
+
+### Notes
+
+- Evolutions are DISPLAY data and are never registered. The engine's
+  `evolutions` field takes a method from a fixed vocabulary, and most modern
+  triggers -- friendship, held item, time of day, a known move -- have no
+  honest id in it. The registered field stays empty, as asserted by tests.
+- Branching chains are kept whole: Eevee carries all eight, and Magnezone
+  keeps seven distinct location methods with the current one first.
+- A regional form with its own line gets its own record -- Galarian Yamask
+  evolves into Runerigus and is not folded into Yamask's chain. A form with
+  no evolution of its own gets no record rather than an invented one.
+
+
 ## 0.15.0
 
 ### Added

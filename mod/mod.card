@@ -9,7 +9,7 @@ return {
   differences = {
     changed = {
       "TYPE CHART picks an effectiveness era and it wins over the cart's own chart, so Ghost really is 2x on Psychic under MODERN",
-      "the Pokedex entry page gains a STATS page on DOWN and form browsing on LEFT/RIGHT",
+      "the Pokedex entry page gains pages on DOWN -- typing, ability and base stats, then every evolution branch and the complete modern movelist -- and form browsing on LEFT/RIGHT, each page following the selected form",
       "the party STATUS screen splits Special into Sp.Atk and Sp.Def when STATS: MODERN",
       "dexSize and dexDigits grow so the dex list can page past 151",
     },
@@ -21,6 +21,7 @@ return {
       "833 modern moves in the move registry, so the whole roster exists by name, type and numbers",
       "MOVES: ALL widens level-up learnsets to the modern moves this engine can actually execute",
       "Gold as well as Red/Blue/Yellow: records are reshaped for the second schema the pokemon registry validates against there",
+      "START on the Gen 1 Pokedex listing cycles the view -- dex order, A-Z by name, or only the species this save has seen or caught -- and names the current one on the title row",
       "exports apiVersion / statsByDex / statsBySpecies / listSpecies / formsOf / splitStats / moveById / listMoves",
     },
     known = {
@@ -31,6 +32,7 @@ return {
       "the Sp.Atk/Sp.Def split is data and display only -- battle damage still reads the ROM's collapsed Special",
       "NATIONAL DEX defaults to OFF, so a freshly enabled install changes nothing until the option is set",
       "records carry moves, abilities and EV yields this engine cannot execute; they are there for mods built on top",
+      "the Gen 1 listing's view modes stand down when another mod has bound SELECT on that list, because that is where a dex mod puts its own view switching and two owners of one row order cannot both be right; Gold's #DEX has sort modes and a search of its own and is left alone entirely",
       "on Gold the Pokedex STATS page and the party summary box do not install at all -- those screens are different classes there and a Gen 2 equivalent is not written yet",
       "Gold's #1-251 keep the cart's base stats on purpose: on Gen 2 those are live battle numbers, so only the typing is patched over them",
     },

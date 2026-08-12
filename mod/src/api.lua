@@ -28,9 +28,11 @@
 local M = {}
 
 -- 2: added moveById / listMoves and the sharded move payload behind them.
--- Nothing that existed at version 1 changed meaning, so a consumer written
--- against 1 keeps working -- which is exactly what the >= check is for.
-M.API_VERSION = 2
+-- 3: added evolutionsOf / listEvolutions and the sharded evolution payload
+--    behind them.  Nothing that existed at 1 or 2 changed meaning, so a
+--    consumer written against either keeps working -- which is exactly what
+--    the >= check is for.
+M.API_VERSION = 3
 
 -- ------------------------------------------------------------- extras load
 --
@@ -165,6 +167,64 @@ local function movesShardPath(number)
     .. "d.lua", number)
 end
 
+-- --------------------------------------------------------- evolutions load
+--
+-- Built by tools/build_evolutions.py into data/evolutions/generated/<NNN>.lua
+-- plus an index.lua mapping species id -> shard number.  Same lazy sharded
+-- shape as the two payloads above, and read by nothing else.
+--
+-- DISPLAY DATA.  It is deliberately NOT the registered `evolutions` field,
+-- which stays `{}` on every record this mod supplies: that field's `method`
+-- is an f.id("evolution_methods") reference into a fixed per-generation
+-- vocabulary (Red's {method, level, item, species}, Gold's {method, level,
+-- item, into, time, comparison}), and friendship, location, held item, time
+-- of day, a known move, trade-with-item, gender, weather and party state
+-- have no honest id in either.  An approximate id would state in the
+-- engine's own words that a species evolves a way it does not, and
+-- Schemas.crossValidate would reject an invented one outright.  So a
+-- consumer reading this is looking at what to DRAW, never at something the
+-- battle engine will act on.
+--
+-- One record per species and per alternate form that has an evolution of its
+-- own, carrying:
+--
+--   id/dex/name       the registered id, the DISPLAYABLE national dex number
+--                     (a form reports its base species' number, never its
+--                     own synthetic registration key) and the name the
+--                     registered record carries
+--   chainId           PokeAPI's evolution-chain number, so two records can
+--                     be recognised as relatives without walking anything
+--   chain             every id in this record's chain, root first, in
+--                     evolution order -- the walk list for drawing the whole
+--                     family from any member of it
+--   stage             1-based depth in `chain`, for indenting that drawing
+--   evolvesFrom       { id, dex, name, text, methods } or nil
+--   evolvesInto       zero or more of the same shape, one per TARGET
+--   baseSpecies/form  on a form record only
+--
+-- `methods` is every distinct way the evolution is known to happen, the one
+-- PokeAPI marks current first (`isDefault`); the group's `text` is that
+-- first one's sentence, which is what a page with room for a single line
+-- should print.  A method carries its human-readable `text`, its PokeAPI
+-- `trigger`, the `versionGroup` it was observed in, and whichever condition
+-- fields apply (level, item, heldItem, location, timeOfDay, minHappiness,
+-- knownMove, gender, region, tradeSpecies, ...) as raw PokeAPI slugs, so a
+-- consumer that wants to word it differently has the parts.
+--
+-- Chains are the connected components of the resolved-id graph, NOT
+-- PokeAPI's species tree: a regional variant whose evolution differs is its
+-- own chain (YAMASK_GALAR -> RUNERIGUS is two nodes and does not mention
+-- Yamask or Cofagrigus), which is the only arrangement that draws right.
+local EVOLUTIONS_INDEX_PATH = "data/evolutions/generated/index.lua"
+-- must match build_evolutions.py's write_shards() zero-padding, exactly as
+-- MOVES_FILENAME_WIDTH must match build_moves.py's
+local EVOLUTIONS_FILENAME_WIDTH = 3
+
+local function evolutionsShardPath(number)
+  return string.format("data/evolutions/generated/%0" .. EVOLUTIONS_FILENAME_WIDTH
+    .. "d.lua", number)
+end
+
 -- ------------------------------------------------------------- pure shaping
 
 -- A full independent copy of a species record.  Deep rather than shallow
@@ -295,6 +355,8 @@ function M.install(mod)
   -- mod -- see makeShardLookup above.
   local extrasFor = makeShardLookup(mod, EXTRAS_INDEX_PATH, extrasShardPath)
   local moveFor, moveIds = makeShardLookup(mod, MOVES_INDEX_PATH, movesShardPath)
+  local evolutionFor, evolutionIds =
+    makeShardLookup(mod, EVOLUTIONS_INDEX_PATH, evolutionsShardPath)
 
   -- Merges a species' extras (if any) into an already-shaped reply, as a
   -- COPY -- exactly like every other field M.shape hands out, so a consumer
@@ -440,6 +502,41 @@ function M.install(mod)
   -- the one it needs rather than paying for all 833.
   mod.exports.listMoves = function()
     return moveIds()
+  end
+
+  -- evolutionsOf("EEVEE") / evolutionsOf(133) -> what to DRAW for one
+  -- species' evolution chain, or nil for an id this mod has no data for.  See
+  -- the evolutions-load section above for the record's fields and, more
+  -- importantly, for why none of this is the registered `evolutions` field --
+  -- a consumer must not feed any of it to something that evolves a mon.
+  --
+  -- A dex number resolves to the species that owns it, so a FORM is only
+  -- reachable by id: Alolan Raichu and Raichu are both No. 26, and the number
+  -- has to keep answering the one a player asked for.  A form that has no
+  -- evolution of its own answers nil rather than borrowing its base
+  -- species' -- Mega Charizard X does not evolve from Charmeleon at level 36,
+  -- and saying so would be an invention.  Read `baseSpecies` off the form's
+  -- own record (statsBySpecies) and ask again for the base species' chain if
+  -- that is what the page wants to show.
+  mod.exports.evolutionsOf = function(idOrDex)
+    local id = idOrDex
+    if type(id) ~= "string" then
+      local number = tonumber(idOrDex)
+      if not number then return nil end
+      build()
+      id = index[number]
+      if not id then return nil end
+    end
+    local found = evolutionFor(id)
+    if type(found) ~= "table" then return nil end
+    return deepCopy(found)
+  end
+
+  -- Every id this mod carries evolution data for, sorted -- the 1025 species
+  -- plus the alternate forms that evolve differently from their base.  Thin
+  -- for the same reason listSpecies and listMoves are.
+  mod.exports.listEvolutions = function()
+    return evolutionIds()
   end
 
   -- Just the alternate forms of one species, by id or dex number.

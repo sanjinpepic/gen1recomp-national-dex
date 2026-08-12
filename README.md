@@ -32,11 +32,33 @@ data.
 - **A Pokédex STATS page** with LEFT/RIGHT form browsing, and a party summary
   that shows the split when you want it — **Red, Blue and Yellow only.** Gold
   shows SPCL.ATK and SPCL.DEF natively, so it needs neither.
-- **On Gold specifically**: the dex lists every species past #251, alternate
-  forms browse on UP/DOWN (LEFT/RIGHT already move that screen's action bar),
-  and both the dex and the party summary draw the art you picked in the sprite
-  mod rather than the cart's own pics. Without that mod, or with it disabled,
-  both screens look exactly as they did.
+- **Every ability a species can have**, on both dex screens — not just the
+  first. The label is plural on purpose: slots 1 and 2 are alternatives, so an
+  individual has one of them, and a singular label over three rows would say
+  something untrue. The hidden ability is marked in the margin and always
+  listed last.
+- **A page strip under every dex entry** — DOWN walks from the entry through
+  STATS, the evolution line and the full movelist by section, and LEFT/RIGHT
+  keep cycling forms on every page, each one showing that form's own data. A
+  section with nothing in it produces no page at all. The evolution page is a
+  single page for all 341 chains: the line indented by stage, the species
+  you're looking at marked, and the evolution trigger beside each name as a
+  short token — `L16`, `LEAF`, `TRADE` — with a trailing `?` where the method
+  carries a condition the token doesn't name. On the Gen 1 listing, START
+  cycles between numerical, A-Z and seen-only, naming both the mode and the
+  key on the title row.
+- **Holding UP/DOWN accelerates** on either game's list, on one shared clock.
+  Gold used to run faster to make up for having no page jumps; now that it has
+  them, both games scroll at the same tiers.
+- **On Gold specifically**: the dex lists every species past #251, with
+  LEFT/RIGHT page jumps (seven rows a step) and alternate forms browsing on
+  UP/DOWN. The dex entry's action bar carries a STATS slot and an LVL slot —
+  LVL opens a paged view of its own, the evolution line on one page and the
+  level-up learnset on the next, switched with UP/DOWN, with LEFT/RIGHT still
+  cycling forms and A or B returning to the entry screen. Both the dex and the
+  party summary draw the art you picked in the sprite mod rather than the
+  cart's own pics. Without that mod, or with it disabled, both screens look
+  exactly as they did.
 - **Plays alongside Useful Dex.** That mod replaces the dex screen; this one
   augments what it builds rather than competing for it, so its pages keep
   working and form browsing keeps working inside them.
@@ -100,22 +122,12 @@ work regardless.
 
 ## What is in here
 
-`mod/` is the mod itself, exactly as it ships — the Lua source, the generated
-species data, [`mod/CHANGELOG.md`](mod/CHANGELOG.md) and two test suites under
-[`mod/tests/`](mod/tests). They run against a Gen1Recomp checkout with this mod
-installed at `mods/national_dex`:
-
-```sh
-luajit mods/national_dex/tests/national_dex_test.lua
-```
-
-```sh
-luajit mods/national_dex/tests/national_dex_gen2_test.lua
-```
-
-Both are listed in `mod/.modkitignore`, so the packagers leave them out of the
-archive. The `.zip` at the root is that same folder packaged for the launcher's
-importer. Nothing else: no build scripts, no examples.
+`mod/` is exactly what the `.zip` installs — the Lua source, the generated
+species, move and evolution data, and the two placeholder art files, all
+picked by this project's own packaging tool from an explicit allow-list.
+Nothing else ships: no `CHANGELOG.md`, no tests, no build scripts. Those live
+in the mod's development tree, which this repository is published from but
+does not include.
 
 ## Credits
 
