@@ -70,6 +70,15 @@ return function(mod)
     -- src/nationaldex.lua's registration path.
     { key = "stats", label = "STATS", type = "choice",
       default = "gen1", choices = { { "GEN 1", "gen1" }, { "MODERN", "modern" } } },
+    -- LEARNSETS ONLY.  The modern move ROSTER is registered either way (see
+    -- src/moves.lua for why that is the safe arrangement rather than the
+    -- generous one), so this option decides one thing: whether a species is
+    -- taught the modern moves it learns by level in the current games, or
+    -- keeps exactly the list it has today.  GEN-NATIVE is the default and
+    -- leaves every learnset byte-identical to a build without this option.
+    { key = "moves", label = "MOVES", type = "choice",
+      default = "gen-native", choices = { { "GEN-NATIVE", "gen-native" },
+                                          { "ALL", "all" } } },
   })
 
   local nationalDex = mod.options:get("national_dex") == "on"
@@ -107,6 +116,26 @@ return function(mod)
     -- cart's own species stay exactly as it supplied them.
     if register then
       register(mod, chart, national, gen2shape, generation, era)
+    end
+  end
+
+  -- The modern move roster (src/moves.lua).  Unconditional, and ordered
+  -- AFTER the species registration above for one reason: widening a learnset
+  -- means reading the species record back and patching it, so every record
+  -- this mod is going to supply has to be in the registry first.  The
+  -- registration half does not care about the order, but running the whole
+  -- module in one place keeps the two halves from drifting apart.
+  --
+  -- One file per generation, because a move's `effect` is a reference into
+  -- `move_effects` and the two games' effect vocabularies are disjoint -- see
+  -- tools/build_moves.py.  Optional like every other data sibling: a missing
+  -- file costs the modern moves and nothing else.
+  local movePayload = loadOptionalSibling(mod,
+    "data/moves/generated/registry_gen" .. (generation == 2 and 2 or 1) .. ".lua")
+  if movePayload then
+    local Moves = loadSibling(mod, "src/moves.lua")
+    if Moves then
+      Moves(mod, movePayload, generation, mod.options:get("moves") == "all")
     end
   end
 

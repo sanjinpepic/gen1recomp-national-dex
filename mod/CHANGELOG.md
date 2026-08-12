@@ -3,6 +3,36 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.15.0
+
+### Added
+
+- All 833 modern moves are registered, with their real name, type, power,
+  accuracy and PP. Registration is unconditional and not tied to the new
+  option: `SaveData` strips move ids missing from `data.moves` on load, so a
+  move that existed only under a setting would vanish from a player's party
+  the moment they turned it off.
+- `MOVES: GEN-NATIVE | ALL`. GEN-NATIVE is the default and leaves today's
+  level-up learnsets exactly as they were. ALL widens them to the moves this
+  engine can execute honestly -- 191 on Gen 1, 272 on Gen 2.
+- `moveById` and `listMoves` on the read API, carrying the complete data for
+  all 833 including the ones this engine cannot execute, so a battle engine
+  built on top does not have to re-source them. `API_VERSION` is now 2.
+
+### Notes
+
+- A move is only learnable if its behaviour is real here. Anything needing
+  state the engine lacks -- recharge, charge turns, held items, abilities,
+  weather, hazards, screens, spread targeting -- is registered but never
+  taught, and carries `effectModeled = false` so a consumer can tell.
+- That marker is not cosmetic: on Gold, Metronome builds its pool by walking
+  every move record with a `power` field, which would have let it roll a
+  placeholder nothing had learnt. Its pool builder is filtered so it rolls
+  only moves that behave. Red is unaffected -- it rolls the cart's own list.
+- The modded move roster changes the link fingerprint, so two players
+  trading or battling must run the same mod.
+
+
 ## 0.14.1
 
 ### Fixed

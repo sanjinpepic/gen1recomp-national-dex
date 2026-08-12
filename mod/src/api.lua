@@ -27,7 +27,10 @@
 
 local M = {}
 
-M.API_VERSION = 1
+-- 2: added moveById / listMoves and the sharded move payload behind them.
+-- Nothing that existed at version 1 changed meaning, so a consumer written
+-- against 1 keeps working -- which is exactly what the >= check is for.
+M.API_VERSION = 2
 
 -- ------------------------------------------------------------- extras load
 --
@@ -72,10 +75,13 @@ local function loadDataModule(mod, name)
   return result
 end
 
--- Builds the extras lookup for one `mod`, with its own index/shard cache --
--- returned as a single function so M.install can capture one instance per
--- installed mod rather than sharing state across calls.
-local function makeExtrasLookup(mod)
+-- Builds a lazy index+shard lookup for one `mod`, with its own cache --
+-- returned as a pair of functions so M.install can capture one instance per
+-- installed mod per tree rather than sharing state across calls.  The species
+-- extras and the move payload are the same shape (one index.lua mapping key
+-- -> shard number, plus zero-padded shard files), so they share this rather
+-- than carrying two copies that can drift.
+local function makeShardLookup(mod, indexPath, pathFor)
   -- nil = not yet attempted; false = attempted, unavailable (missing or
   -- unreadable); a table = loaded.  Distinguishing nil from false is what
   -- makes this "try once, then cache the answer either way" instead of
@@ -85,7 +91,7 @@ local function makeExtrasLookup(mod)
 
   local function getIndex()
     if index == nil then
-      local loaded = loadDataModule(mod, EXTRAS_INDEX_PATH)
+      local loaded = loadDataModule(mod, indexPath)
       index = (type(loaded) == "table") and loaded or false
     end
     return index or nil
@@ -93,23 +99,70 @@ local function makeExtrasLookup(mod)
 
   local function getShard(number)
     if shards[number] == nil then
-      local loaded = loadDataModule(mod, extrasShardPath(number))
+      local loaded = loadDataModule(mod, pathFor(number))
       shards[number] = (type(loaded) == "table") and loaded or false
     end
     return shards[number] or nil
   end
 
-  -- The extras table for one species id, or nil -- missing index, missing
-  -- shard, an id absent from the index, or a shard that doesn't carry that
-  -- id after all (an index/shard gone stale relative to each other) all
-  -- answer nil the same way. Never raises.
-  return function(id)
+  -- The record for one key, or nil -- missing index, missing shard, a key
+  -- absent from the index, or a shard that doesn't carry that key after all
+  -- (an index/shard gone stale relative to each other) all answer nil the
+  -- same way. Never raises.
+  local function lookup(id)
     local idx = getIndex()
     local shardNumber = idx and idx[id]
     if not shardNumber then return nil end
     local shard = getShard(shardNumber)
     return shard and shard[id] or nil
   end
+
+  -- Every key the index knows, sorted.  One small read; the shards stay
+  -- untouched, which is the point of answering a directory question from the
+  -- index rather than by walking the payload.
+  local function keys()
+    local idx = getIndex()
+    local out = {}
+    if not idx then return out end
+    for id in pairs(idx) do out[#out + 1] = id end
+    table.sort(out)
+    return out
+  end
+
+  return lookup, keys
+end
+
+-- --------------------------------------------------------------- moves load
+--
+-- The complete PokeAPI record for every one of the 833 moves anything in this
+-- mod's data can learn, built by tools/build_moves.py into
+-- data/moves/generated/api/<NNN>.lua plus an index.lua mapping move id ->
+-- shard number.  Sharded and lazily loaded for the identical reason the
+-- species extras are, and read by NOTHING ELSE: none of it is registered, and
+-- the game never looks at it.
+--
+-- What a consumer gets that the registry does not carry: the English effect
+-- text (short and long), the PokeAPI move id and slug, the damage class,
+-- target, generation, the whole `meta` block (ailment and its chance, flinch
+-- and stat chance, crit rate, drain, healing, hit and turn counts) and the
+-- stat-change rows.
+--
+-- Two fields are this mod's own answer rather than PokeAPI's, and a consumer
+-- reading the `moves` REGISTRY needs them: `gen1Effect`/`gen2Effect` are the
+-- effect id the move is registered with on that generation, and
+-- `gen1EffectModeled`/`gen2EffectModeled` say whether that id is the move's
+-- real behaviour or a PLACEHOLDER.  A record with EffectModeled false is
+-- registered so the move exists by name and stats; its effect is plain
+-- damage, not what the move does, and this mod refuses to put it in any
+-- learnset.  Treat a false there as "this engine cannot execute this move".
+local MOVES_INDEX_PATH = "data/moves/generated/api/index.lua"
+-- must match build_moves.py's write_shards() zero-padding, exactly as
+-- EXTRAS_FILENAME_WIDTH must match write_extras()'s
+local MOVES_FILENAME_WIDTH = 3
+
+local function movesShardPath(number)
+  return string.format("data/moves/generated/api/%0" .. MOVES_FILENAME_WIDTH
+    .. "d.lua", number)
 end
 
 -- ------------------------------------------------------------- pure shaping
@@ -238,9 +291,10 @@ function M.install(mod)
   local pokemon = mod.content and mod.content.pokemon
   if not pokemon then return false end
 
-  -- One extras lookup (its own index/shard cache) per installed mod -- see
-  -- makeExtrasLookup above.
-  local extrasFor = makeExtrasLookup(mod)
+  -- One lookup per tree (each with its own index/shard cache) per installed
+  -- mod -- see makeShardLookup above.
+  local extrasFor = makeShardLookup(mod, EXTRAS_INDEX_PATH, extrasShardPath)
+  local moveFor, moveIds = makeShardLookup(mod, MOVES_INDEX_PATH, movesShardPath)
 
   -- Merges a species' extras (if any) into an already-shaped reply, as a
   -- COPY -- exactly like every other field M.shape hands out, so a consumer
@@ -359,6 +413,33 @@ function M.install(mod)
     end
     table.sort(out, function(a, b) return a.dex < b.dex end)
     return out
+  end
+
+  -- moveById("FLAMETHROWER") -> the complete PokeAPI record for one move, or
+  -- nil for an id this mod has no data for (the cart's own moves that nothing
+  -- in the national dex can learn are the realistic case).  A COPY, like
+  -- everything else here, so a consumer mutating the reply cannot reach the
+  -- cached shard.  See the moves-load section above for the fields, and in
+  -- particular for what gen1EffectModeled/gen2EffectModeled mean -- a
+  -- consumer that acts on a move's effect must check them.
+  --
+  -- The id is the one the move is REGISTERED under (the engine's own spelling
+  -- where the cart already had the move, e.g. PSYCHIC_M); `strippedId` on the
+  -- reply is the separator-free spelling the species extras' movesFull and
+  -- movesByMethod use, for reconciling the two.
+  mod.exports.moveById = function(id)
+    if type(id) ~= "string" then return nil end
+    local record = moveFor(id)
+    if type(record) ~= "table" then return nil end
+    return deepCopy(record)
+  end
+
+  -- Every move id this mod carries data for, sorted.  Deliberately thin for
+  -- the same reason listSpecies is -- it is for building a menu or checking
+  -- membership, and a caller that wants a move's numbers asks moveById for
+  -- the one it needs rather than paying for all 833.
+  mod.exports.listMoves = function()
+    return moveIds()
   end
 
   -- Just the alternate forms of one species, by id or dex number.
