@@ -155,7 +155,12 @@ local function requireAll()
   return mods
 end
 
-function M.install(mod)
+-- `generation` is the booting game (1 unless Gold said otherwise); it gates
+-- the neighbour seam at the bottom of this function and nothing else, because
+-- Gold's #DEX is its own class under its own screen id and never builds the
+-- one this file patches.  nil means Gen 1, the same assumption main.lua makes
+-- when it could not ask.
+function M.install(mod, generation)
   local mods = requireAll()
   if not mods then return false end
   local DexEntryMenu = mods["src.ui.DexEntryMenu"]
@@ -258,8 +263,21 @@ function M.install(mod)
     self.spriteTrueColor = sprite and trueColor or self.baseSpriteTrueColor
   end
 
+  -- Is a Pokédex entry the screen being put together, or the screen already
+  -- standing?  Both halves are needed and they are different moments: a
+  -- replacement screen resolves its pic inside its own constructor, BEFORE
+  -- anything is pushed, and again later when the player steps to another
+  -- species with the screen already live.  Read by the Sprites.path seam at
+  -- the bottom of this function; inert until a neighbour claims the screen.
+  local building = false
+  local stacked = 0
+
   local originalNew = DexEntryMenu.new
   function DexEntryMenu.new(game, speciesOrOpts, onDone)
+    -- Set before the vanilla constructor rather than after, because a
+    -- replacement screen delegates to it and then resolves its own art on
+    -- the way back out -- the window has to already be open by then.
+    building = true
     local self = originalNew(game, speciesOrOpts, onDone)
     -- Everything below is additive state for page 2 / form browsing.  A
     -- failure here must never take the vanilla page down with it, so it is
@@ -390,6 +408,102 @@ function M.install(mod)
     pcall(drawFormChrome, self)
   end
 
+  -- ------------------------------------------- when a neighbour owns the page
+  --
+  -- Screens.resolve prefers the screens registry over src/ui/DexEntryMenu, so
+  -- a mod that REGISTERS "DexEntryMenu" replaces the stacked screen outright
+  -- instead of patching it.  Such a screen still builds a real DexEntryMenu
+  -- underneath and delegates to it -- so everything above still runs -- but it
+  -- draws its own pages and reads its own input, which means the STATS page
+  -- and form browsing above are bypassed for as long as it is installed.
+  -- That is its screen to own and nothing here fights it for the stack.
+  --
+  -- The PIC is a different matter, because neither side can see the whole of
+  -- it.  A replacement screen resolves its own art and is free to ask under
+  -- whatever ctx.kind it likes -- one shipped mod asks under "battle" so that
+  -- battle-art hooks apply to its page.  A sprite mod grants full-colour art
+  -- its opt-out from the four-shade SGB pass per KIND, keyed on a whitelist of
+  -- still-image screens that has "dex" on it and deliberately not "battle" --
+  -- withholding it there is what stops a voxel battle mod's billboard
+  -- alternating shaded and unshaded frame to frame.  Put together, the entry
+  -- asked for its pic under the one kind that is refused, and drew 96px colour
+  -- art crushed to four shades on every open.  Both neighbours are right about
+  -- the thing they can see; this mod is the one that can see both.
+  --
+  -- So correct the CONTEXT rather than the art: while a Pokédex entry is being
+  -- built or is on the stack, a pic lookup is a dex lookup whoever asks for it
+  -- and whatever they name it.  Relabelling in Sprites.path puts the answer
+  -- ahead of every pokemon.sprite hook, so it does not matter which mod
+  -- wrapped that hook first or whether one is installed at all.
+  --
+  -- Deliberately not a wider grant and not a kind blacklist: outside the
+  -- window every lookup keeps exactly the answer it had before, and a kind
+  -- nobody has invented yet is covered by where it is asked from rather than
+  -- by a list somebody has to remember to extend.
+  --
+  -- Gen 1 only.  Gold's #DEX is its own class under its own screen id, builds
+  -- this one never, and must not gain a seam it cannot use.
+  if generation ~= 2 then
+    local neighbourOwnsEntry = false
+
+    local function dexWindow()
+      return neighbourOwnsEntry and (building or stacked > 0)
+    end
+
+    -- Asked after every mod has registered and the screens registry has been
+    -- merged into data.screens, so the answer does not depend on load order.
+    -- A registry hit means some mod replaced the screen; the builtin is the
+    -- require fallback and never appears there.
+    mod.events:on("mods.loaded", function(payload)
+      local screens = payload and payload.data and payload.data.screens
+      neighbourOwnsEntry = screens ~= nil and screens.DexEntryMenu ~= nil
+      if not neighbourOwnsEntry then return end
+      mod.log:info("another mod owns the Pokédex entry screen -- its pages "
+        .. "replace this mod's STATS page and form browsing; species data and "
+        .. "dex art still come from here")
+    end)
+
+    -- screen.pushed/popped carry the state with the id Screens.build stamped
+    -- on it, so this counts a neighbour's screen exactly as it counts the
+    -- builtin.  The build window closes on the NEXT push whatever that push
+    -- is: a construction that never reaches the stack (a screen that threw and
+    -- degraded) must not leave the window propped open behind it.
+    mod.events:on("screen.pushed", function(payload)
+      local state = payload and payload.state
+      if state and state.screenId == "DexEntryMenu" then
+        stacked = stacked + 1
+      end
+      building = false
+    end)
+    mod.events:on("screen.popped", function(payload)
+      local state = payload and payload.state
+      if state and state.screenId == "DexEntryMenu" then
+        stacked = math.max(0, stacked - 1)
+      end
+      building = false
+    end)
+
+    local function alreadyDex(opts)
+      return type(opts) == "table" and opts.kind == "dex"
+    end
+
+    local originalPath = Sprites.path
+    function Sprites.path(data, species, side, opts)
+      if dexWindow() and not alreadyDex(opts) then
+        -- a copy, never a write into the caller's table: a screen that keeps
+        -- one options table around would otherwise be silently retyped for
+        -- every lookup it ever makes, including the ones after it closes
+        local relabelled = { kind = "dex" }
+        if type(opts) == "table" then
+          for key, value in pairs(opts) do relabelled[key] = value end
+          relabelled.kind = "dex"
+        end
+        opts = relabelled
+      end
+      return originalPath(data, species, side, opts)
+    end
+  end
+
   -- :sgbPalettes is deliberately left untouched: it keys its zone off
   -- self.def.id, and self.def stays the base species for the page's whole
   -- lifetime by design (see the file banner) -- reusing that same read
@@ -401,6 +515,8 @@ function M.install(mod)
   return true
 end
 
-setmetatable(M, { __call = function(_, mod) return M.install(mod) end })
+setmetatable(M, { __call = function(_, mod, generation)
+  return M.install(mod, generation)
+end })
 
 return M

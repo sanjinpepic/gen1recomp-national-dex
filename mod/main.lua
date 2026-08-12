@@ -143,8 +143,12 @@ return function(mod)
   -- loadSibling(...)(mod) one-liner) so its splitStats lookup can be
   -- handed to the party summary patch below -- one shared helper, not a
   -- second copy of the same field reads.
+  -- Handed the generation for the same reason gen2dexlist.lua is: its
+  -- neighbour seam is keyed on a Gen 1 screen id, and probing for the game
+  -- from inside a file whose require()s all resolve to Gen 1 classes would
+  -- only be a second, worse copy of the answer main.lua already has.
   local Dexpage = loadSibling(mod, "src/dexpage.lua")
-  if Dexpage then Dexpage(mod) end
+  if Dexpage then Dexpage(mod, generation) end
 
   -- Gold draws neither of the screens above: its #DEX is its own class, sized
   -- from the cart's dex table rather than from the dexSize constant Gen 1
@@ -164,10 +168,25 @@ return function(mod)
   -- Gold's own pic is drawn exactly as before -- which is why it is a plain
   -- mod:find closure and not a declared hard dependency.
   local Gen2Dex = loadSibling(mod, "src/gen2dexlist.lua")
+  -- ONE resolver for both Gold screens, built here rather than at either call
+  -- site.  It caches the neighbour's export the first time it answers, so
+  -- sharing it also means the second screen never repeats that lookup.
+  local spriteArt = Gen2Dex and Gen2Dex.spriteArt(
+    function(id) return mod:find(id) end,
+    Dexpage and Dexpage.formCandidates) or nil
   if Gen2Dex then
-    Gen2Dex(generation, Dexpage and Dexpage.buildFormList,
-      Gen2Dex.spriteArt(function(id) return mod:find(id) end,
-        Dexpage and Dexpage.formCandidates))
+    Gen2Dex(generation, Dexpage and Dexpage.buildFormList, spriteArt)
+  end
+
+  -- Gold's party SUMMARY has the same two problems its #DEX had -- it reads
+  -- the cart's spriteFront with no hook, and it shades whatever it got
+  -- through the GBC palette -- so src/gen2summary.lua is the same reach onto
+  -- that screen, sharing the resolver above and gen2dexlist's drawing rules
+  -- rather than carrying copies.  Art only: Gold already prints SPCL.ATK and
+  -- SPCL.DEF itself, so the Gen 1 stats box below has nothing to add here.
+  local Gen2Summary = loadSibling(mod, "src/gen2summary.lua")
+  if Gen2Summary and Gen2Dex and spriteArt then
+    Gen2Summary(generation, spriteArt, Gen2Dex)
   end
 
   -- Party summary stats box (src/summarystats.lua): same treatment as the

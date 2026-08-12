@@ -3,6 +3,39 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.13.1
+
+### Fixed
+
+- The Pokedex no longer renders art miscoloured when `useful_dex` is enabled.
+  That mod replaces the dex screen and re-resolves the pic under a `battle`
+  kind, which the sprite mod deliberately excludes from its full-colour
+  answer, so 96px colour art was drawn through the four-shade pass. While a
+  dex entry is being built or is on the stack, a pic lookup is now relabelled
+  as a dex lookup whoever asks -- at `Sprites.path`, ahead of every hook, so
+  the fix does not depend on mod load order.
+
+## 0.13.0
+
+### Added
+
+- Gold's party summary shows the art chosen in the `universal_sprites` mod,
+  through the same seam and the same `resolveSprite` export the Pokedex uses.
+  The resolver is shared between both screens rather than copied, and is
+  handed the live mon, so a shiny in the party gets its shiny art.
+
+### Notes
+
+- With `useful_dex` installed it owns the dex screen, so this mod's STATS page
+  and form browsing are replaced by its own pages. Registering the same screen
+  id would error outright, so this is not a conflict to win; the species data
+  still feeds its screens. The stand-down is logged rather than silent.
+- On Gold the summary backdrop keeps the cart's square rather than going black
+  as the dex does: that panel is white, so black would be a box on a white
+  page. A party Unown keeps the cart's pic, since the page shows its own
+  letter and the sprite sets carry no per-letter art.
+
+
 ## 0.12.1
 
 ### Changed

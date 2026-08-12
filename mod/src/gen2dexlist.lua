@@ -187,10 +187,17 @@ M.SPRITE_MOD = "universal_sprites"
 -- Assets.image and raises no hook, which is why a sprite mod cannot reach
 -- this screen from its own side and why the reach has to be made from here.
 --
--- Returns a resolver -- (pokemon, speciesId, data) -> path, trueColor -- or
--- nil when there is nothing to ask.  The whole integration is OPTIONAL: no
+-- Returns a resolver -- (pokemon, speciesId, data, mon) -> path, trueColor --
+-- or nil when there is nothing to ask.  The whole integration is OPTIONAL: no
 -- neighbour, a disabled one, or one with no art for a species all answer nil
 -- and Gold's own pic is drawn exactly as before.
+--
+-- `mon` is a LIVE mon table where the caller has one (the party summary does,
+-- the dex does not) and nil otherwise.  The registry reads shininess off its
+-- DVs (dev/src/registry.lua:139), which is the only way a shiny gets its own
+-- art; dev/src/compat_monpic.lua:169 hands the battler's mon over for exactly
+-- that reason.  A species with no shiny variant falls through to the plain
+-- front, so passing it can only add art, never lose it.
 --
 -- TWO questions are asked, of two different places, because neither can
 -- answer the other's:
@@ -237,7 +244,7 @@ function M.spriteArt(find, formCandidates, sprites)
     return loadedSprites or nil
   end
 
-  return function(pokemon, speciesId, data)
+  return function(pokemon, speciesId, data, mon)
     local fn = export()
     if not fn then return nil, false end
     -- A FORM is asked for as "base species, wearing form X", never by its own
@@ -253,9 +260,12 @@ function M.spriteArt(find, formCandidates, sprites)
         lookupId, form, altForm = base, id, alt
       end
     end
+    -- ctx.form wins over ctx.mon.form in the registry (registry.lua:37-41), so
+    -- the form decided above is still the one asked for even with a mon here.
+    local monArg = type(mon) == "table" and mon or nil
     local function ask(formId)
       local ok, path = pcall(fn, { species = lookupId, side = "front",
-        kind = "dex", form = formId })
+        kind = "dex", form = formId, mon = monArg })
       if not ok or type(path) ~= "string" or path == "" then return nil end
       return path
     end
@@ -288,6 +298,103 @@ function M.spriteArt(find, formCandidates, sprites)
     end
     return path, trueColor
   end
+end
+
+-- ------------------------------ drawing supplied art, shared between screens
+
+-- Gold's #DEX and Gold's party summary both have to fit foreign art into a
+-- tile block the cart sized for its own pics, and both have to get it past a
+-- palette shader that would ruin it.  The three below are that shared half;
+-- src/gen2summary.lua is handed this module and calls them.  They live here
+-- rather than in a fourth file because the dex arm is where they were written
+-- and where their reasoning is already spelled out -- a second copy is how the
+-- two screens would end up disagreeing about what a sprite set looks like.
+--
+-- None of them touches love at file scope: this file loads on a Gen 1 boot
+-- too, and the pure half above is driven by tests with no engine in them.
+
+-- Cached per menu instance and per species, image and all: a menu is reused
+-- for every mon the player opens and this is asked once per frame per drawn
+-- pic.  `false` is a remembered MISS -- a species the neighbour has nothing
+-- for must not be re-asked (and re-file-checked) every frame.  The cache
+-- field is this mod's own name on a class it does not own.
+function M.artFor(owner, species, resolveArt, pokemon, data, mon)
+  if type(resolveArt) ~= "function" or type(owner) ~= "table" then return nil end
+  local cache = owner.nationalDexArt
+  if not cache then cache = {} owner.nationalDexArt = cache end
+  -- Shininess is part of the key, not just of the question: one summary menu
+  -- walks a whole party, and a shiny and an ordinary mon of the same species
+  -- resolve to different art.  A caller with no mon (the dex) keys on the
+  -- species alone, exactly as before.
+  local key = species
+  if type(mon) == "table" and mon.shiny then key = species .. "\0shiny" end
+  local hit = cache[key]
+  if hit == nil then
+    hit = false
+    local ok, path, trueColor = pcall(resolveArt, pokemon, species, data, mon)
+    if ok and type(path) == "string" and path ~= "" then
+      -- love.graphics.newImage rather than Assets.image: Assets keys its
+      -- cache by a path it resolves under the engine's own asset roots, and
+      -- this one is absolute and inside another mod's directory.
+      local loaded, image = pcall(love.graphics.newImage, path)
+      if loaded and image then
+        hit = { image = image, trueColor = trueColor and true or false }
+      end
+    end
+    cache[key] = hit
+  end
+  return hit or nil
+end
+
+-- Run `body` with no shader bound, restoring whatever was bound before.
+--
+-- This is the palette bypass and the reason both draws are reimplemented
+-- rather than delegated.  Each screen wraps its pic in GbcPalette.with(colors,
+-- body) UNCONDITIONALLY (PokedexMenu.lua:480-484, SummaryMenu.lua:906-910),
+-- and that shader is a shade substitution: it recovers a 0..3 shade index from
+-- the red channel and replaces it with one of four palette entries, so
+-- full-colour art comes back wearing two colours -- a full-colour Totodile
+-- rendered red.  The battle screen already has the opt-out neither of them has
+-- (src/ui/gen2/BattleState.lua:631 skips the wrap for trueColor art); this is
+-- that same opt-out, on the two screens that never got one.
+--
+-- Captured and restored rather than merely cleared, exactly as GbcPalette.with
+-- does: a caller further up may have one bound.
+function M.unshaded(body)
+  local G = love.graphics
+  local previous = G.getShader and G.getShader() or nil
+  if G.setShader then G.setShader() end
+  local ok, err = pcall(body)
+  if G.setShader then G.setShader(previous) end
+  if not ok then error(err, 0) end
+end
+
+-- Where a w x h image goes inside a `box`-pixel square whose top-left corner
+-- is (originX, originY).  Returns scale, x, y -- or nil for an image with no
+-- usable dimensions, which the caller reads as "draw the cart's pic instead".
+--
+-- Fitted to the box, NEVER enlarged.  The cart's own pics are 5x5, 6x6 or 7x7
+-- tiles and PadFrontpic centres them; a sprite set's are whatever the art dump
+-- ships (96px is ordinary), and the engine's answer to that --
+-- battle_sprite_scales -- is a BATTLE registry keyed to a battle box, not to
+-- either of these.  So the box itself decides: at 1:1 a 96px pic would cover
+-- the column of text beside it on both screens.
+--
+-- Centred both ways.  The cart's own pics stand on the block's bottom edge
+-- (PIC_PAD pads a 5x5 pic downward) so that a small mon shares a ground line
+-- with a big one, and this followed that at first -- but a sprite set's art is
+-- not drawn to that convention: it arrives already trimmed to its own bounds
+-- at whatever aspect the dump ships, so bottom-pinning it leaves a wide, short
+-- sprite sitting on the floor with all the empty space above it.  Centring is
+-- the honest fit for art whose framing this mod does not control.  Only ever
+-- applied to art this mod supplied; the cart's own pics never reach here.
+function M.artPlacement(w, h, box, originX, originY)
+  if type(w) ~= "number" or type(h) ~= "number" or w <= 0 or h <= 0 then
+    return nil
+  end
+  local scale = math.min(box / w, box / h, 1)
+  return scale, originX + math.floor((box - w * scale) / 2),
+    originY + math.floor((box - h * scale) / 2)
 end
 
 -- ------------------------------------------------------------ engine patch
@@ -517,59 +624,16 @@ function M.install(generation, buildFormList, resolveArt)
 
   -- ------- the sprite mod's art on Gold's dex
   --
-  -- Cached per menu instance and per species, image and all: Gold reuses one
-  -- menu for every entry the player opens, and this is asked once per frame
-  -- per drawn pic.  `false` is a remembered MISS -- a species the neighbour
-  -- has nothing for must not be re-asked (and re-file-checked) every frame.
+  -- The lookup, the palette bypass and the fit are M.artFor / M.unshaded /
+  -- M.artPlacement above, shared with the party summary arm.
   local function modArt(self, species)
-    if type(resolveArt) ~= "function" then return nil end
-    local cache = self.nationalDexArt
-    if not cache then cache = {} self.nationalDexArt = cache end
-    local hit = cache[species]
-    if hit == nil then
-      hit = false
-      local ok, path, trueColor = pcall(resolveArt, self.pokemon, species,
-        self.game and self.game.data)
-      if ok and type(path) == "string" and path ~= "" then
-        -- love.graphics.newImage rather than Assets.image: Assets keys its
-        -- cache by a path it resolves under the engine's own asset roots, and
-        -- this one is absolute and inside another mod's directory.
-        local loaded, image = pcall(love.graphics.newImage, path)
-        if loaded and image then
-          hit = { image = image, trueColor = trueColor and true or false }
-        end
-      end
-      cache[species] = hit
-    end
-    return hit or nil
+    return M.artFor(self, species, resolveArt, self.pokemon,
+      self.game and self.game.data)
   end
 
   -- The 7x7 tile block Pokedex_PlaceFrontpicTopLeftCorner lays for the pic,
   -- in pixels (PokedexMenu.lua:436-452).
   local PIC_BOX = 7 * 8
-
-  -- Run `body` with no shader bound, restoring whatever was bound before.
-  --
-  -- This is the palette bypass and the reason this whole draw is reimplemented
-  -- rather than delegated.  Gold's drawPic wraps the pic in
-  -- GbcPalette.with(colors, body) UNCONDITIONALLY (PokedexMenu.lua:480-484),
-  -- and that shader is a shade substitution: it recovers a 0..3 shade index
-  -- from the red channel and replaces it with one of four palette entries, so
-  -- full-colour art comes back wearing two colours -- a full-colour Totodile
-  -- rendered red.  The battle screen already has the opt-out this screen
-  -- lacks (src/ui/gen2/BattleState.lua:631 skips the wrap for trueColor art);
-  -- this is that same opt-out, on the one screen that never got one.
-  --
-  -- Captured and restored rather than merely cleared, exactly as
-  -- GbcPalette.with does: a caller further up may have one bound.
-  local function unshaded(body)
-    local G = love.graphics
-    local previous = G.getShader and G.getShader() or nil
-    if G.setShader then G.setShader() end
-    local ok, err = pcall(body)
-    if G.setShader then G.setShader(previous) end
-    if not ok then error(err, 0) end
-  end
 
   -- Gold's own drawPic, for one image it cannot resolve itself.  The blank
   -- square is kept because the art is fitted INSIDE the block rather than
@@ -602,32 +666,15 @@ function M.install(generation, buildFormList, resolveArt)
     G.rectangle("fill", tx * 8, ty * 8, PIC_BOX, PIC_BOX)
 
     local image = art.image
-    local w, h = image:getWidth(), image:getHeight()
-    if not (w and h and w > 0 and h > 0) then return end
-    -- Fitted to the block, never enlarged.  The cart's own pics are 5x5, 6x6
-    -- or 7x7 tiles and PadFrontpic centres them; a sprite set's are whatever
-    -- the art dump ships (96px is ordinary), and the engine's answer to that
-    -- -- battle_sprite_scales -- is a BATTLE registry keyed to a battle box,
-    -- not to this one.  So the box itself decides: at 1:1 a 96px pic would
-    -- cover the No./name/height/weight column beside it.
-    local scale = math.min(PIC_BOX / w, PIC_BOX / h, 1)
-    -- Centred both ways.  The cart's own pics stand on the block's bottom edge
-    -- (PIC_PAD pads a 5x5 pic downward) so that a small mon shares a ground
-    -- line with a big one, and this followed that at first -- but a sprite
-    -- set's art is not drawn to that convention: it arrives already trimmed to
-    -- its own bounds at whatever aspect the dump ships, so bottom-pinning it
-    -- leaves a wide, short sprite sitting on the floor with all the empty
-    -- space above it.  Centring is the honest fit for art whose framing this
-    -- mod does not control.  Only ever applied here, to art this mod supplied;
-    -- Gold's own pics never reach this function.
-    local x = tx * 8 + math.floor((PIC_BOX - w * scale) / 2)
-    local y = ty * 8 + math.floor((PIC_BOX - h * scale) / 2)
+    local scale, x, y = M.artPlacement(image:getWidth(), image:getHeight(),
+      PIC_BOX, tx * 8, ty * 8)
+    if not scale then return end
     G.setColor(1, 1, 1, 1)
     local function body() G.draw(image, x, y, 0, scale, scale) end
     -- A four-shade NATIVE set is art the palette is RIGHT for, and it comes
     -- through this same seam, so the flag decides rather than the source.
     if art.trueColor or not (colors and GbcPalette.available()) then
-      unshaded(body)
+      M.unshaded(body)
     else
       GbcPalette.with(colors, body)
     end
