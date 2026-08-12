@@ -3,6 +3,50 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.12.1
+
+### Changed
+
+- Sprite art in Gold's dex is centred in its box rather than stood on the
+  bottom edge. The cart pads its own pics downward so a small mon shares a
+  ground line with a big one; a sprite set's art arrives trimmed to its own
+  bounds at whatever aspect the dump ships, so bottom-pinning left a wide
+  sprite on the floor with the space above it empty.
+- The blank square behind supplied art is black, matching the rest of the
+  list panel, instead of the palette's lightest entry. That colour reads as a
+  background behind a two-shade ROM pic and as a coloured card behind a
+  full-colour sprite. Palette art keeps the cart's square unchanged.
+
+## 0.12.0
+
+### Added
+
+- Gold's Pokedex draws the art chosen in the `universal_sprites` mod, asked
+  for across the mod boundary through that mod's own `resolveSprite` export.
+  A species it has no answer for keeps the cart's pic, so this is optional:
+  without the sprite mod, or with it disabled, Gold's dex is unchanged.
+- `universal_sprites` is named in `optional_dependencies`. That is a
+  load-order edge rather than a requirement -- this mod's priority would
+  otherwise put it first.
+
+### Fixed
+
+- Full-colour art no longer renders miscoloured in Gold's dex. That screen
+  wraps its draw in the Game Boy Color palette unconditionally, without the
+  opt-out the battle screen has. The palette is now bypassed for the single
+  draw showing supplied art, with the previous shader restored immediately
+  after; the cart's own pics still go through it untouched.
+
+### Notes
+
+- Which of the two applies is read from the engine's own true-colour seam,
+  not from the fact that art came from a mod: a four-shade NATIVE set is art
+  the palette is right for, and drawing it unshaded would render it grey.
+- In CLASSIC colour mode Gold lays a whole-screen zone over the finished
+  frame and nothing on Gen 2 marks a true-colour exemption, so supplied art
+  takes the green ramp there -- as Gold's battle art already does.
+
+
 ## 0.11.0
 
 ### Added

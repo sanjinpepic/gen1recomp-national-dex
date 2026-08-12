@@ -156,9 +156,18 @@ return function(mod)
   -- 1 one unless it is asked for by its real Gen 2 name.  It is also handed
   -- Dexpage.buildFormList so both games decide a species' form order with the
   -- same function instead of two copies that can drift.
+  --
+  -- Gold's dex also draws the CART's pic and offers no seam to change it, so
+  -- a sprite mod cannot reach that screen from its own side; the third
+  -- argument is this mod reaching for it instead, on Gold only.  Entirely
+  -- optional -- without the neighbour, or for a species it has no art for,
+  -- Gold's own pic is drawn exactly as before -- which is why it is a plain
+  -- mod:find closure and not a declared hard dependency.
   local Gen2Dex = loadSibling(mod, "src/gen2dexlist.lua")
   if Gen2Dex then
-    Gen2Dex(generation, Dexpage and Dexpage.buildFormList)
+    Gen2Dex(generation, Dexpage and Dexpage.buildFormList,
+      Gen2Dex.spriteArt(function(id) return mod:find(id) end,
+        Dexpage and Dexpage.formCandidates))
   end
 
   -- Party summary stats box (src/summarystats.lua): same treatment as the

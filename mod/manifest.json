@@ -1,7 +1,7 @@
 {
   "id": "national_dex",
   "name": "National Dex",
-  "version": "0.11.0",
+  "version": "0.12.1",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -17,7 +17,9 @@
     "engine_internals"
   ],
   "dependencies": [],
-  "optional_dependencies": [],
+  "optional_dependencies": [
+    "universal_sprites"
+  ],
   "conflicts": [],
   "description": "Registers the full 1025-species national dex with PokeAPI entries and modern typing."
 }

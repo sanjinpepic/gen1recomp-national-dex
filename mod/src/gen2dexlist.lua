@@ -37,7 +37,14 @@
 -- the caller says generation 2.
 --
 -- Everything above M.install is pure -- no love, no engine module, no mod
--- handle -- so tests exercise it with plain tables.
+-- handle -- so tests exercise it with plain tables.  M.spriteArt, the last of
+-- them, holds to that at file scope and reaches for one engine module only
+-- from inside the closure it returns, once a draw has actually asked.
+--
+-- The pic is the second thing Gold's dex resolves for itself and never asks
+-- about: see M.spriteArt for why the sprite mod cannot reach this screen, and
+-- the drawPic patch for why the art also has to be drawn here rather than
+-- handed back to the cart's own draw.
 
 local M = {}
 
@@ -170,6 +177,119 @@ function M.newSpecies(pokemon, entries)
   return out
 end
 
+-- ------------------------------------------------- the sprite mod's art
+
+-- The id of the neighbour this asks, and the export it asks through.
+M.SPRITE_MOD = "universal_sprites"
+
+-- Gold's dex draws the CART's pic and offers no seam to change it:
+-- src/ui/gen2/PokedexMenu.lua:400 reads record.spriteFront through
+-- Assets.image and raises no hook, which is why a sprite mod cannot reach
+-- this screen from its own side and why the reach has to be made from here.
+--
+-- Returns a resolver -- (pokemon, speciesId, data) -> path, trueColor -- or
+-- nil when there is nothing to ask.  The whole integration is OPTIONAL: no
+-- neighbour, a disabled one, or one with no art for a species all answer nil
+-- and Gold's own pic is drawn exactly as before.
+--
+-- TWO questions are asked, of two different places, because neither can
+-- answer the other's:
+--
+--   * WHETHER, and WHICH art -- universal_sprites' own `resolveSprite`
+--     export (dev/src/api.lua), the same activeRegistry():resolve call its
+--     battle path makes.  nil means "we have nothing for this species", and
+--     it is the only lookup that can say so: the engine's Sprites.path hands
+--     back the vanilla path in that case, which is indistinguishable from a
+--     mod answering with art that happens to be the cart's.
+--   * HOW to draw it -- the trueColor flag off the engine's own
+--     pokemon.sprite seam, which is where the sprite mod publishes its RENDER
+--     STYLE decision (a four-shade NATIVE set answers false and MUST keep the
+--     GBC palette; full-colour art answers true and must not).  No export
+--     carries that, and guessing it wrong is visible either way round: a
+--     shaded full-colour pic, or a grey one.
+--
+-- Resolved lazily and re-asked until it answers, the way
+-- dev/src/compat_voxel.lua reaches its own neighbour: mod:find is nil until
+-- the other mod has run, and load order between two mods is not ours to pin.
+function M.spriteArt(find, formCandidates, sprites)
+  if type(find) ~= "function" then return nil end
+  local resolve
+  local function export()
+    if resolve then return resolve end
+    local ok, handle = pcall(find, M.SPRITE_MOD)
+    if not ok or type(handle) ~= "table" or type(handle.exports) ~= "table" then
+      return nil
+    end
+    local fn = handle.exports.resolveSprite
+    if type(fn) ~= "function" then return nil end
+    resolve = fn
+    return fn
+  end
+
+  -- The engine module is required HERE rather than at file scope: this file
+  -- is loaded by every boot, Gen 1 included, and the pure half above is
+  -- driven by tests that must never pull an engine module in.
+  local loadedSprites = sprites
+  local function spritesModule()
+    if loadedSprites ~= nil then return loadedSprites or nil end
+    local ok, value = pcall(require, "src.pokemon.Sprites")
+    loadedSprites = (ok and type(value) == "table") and value or false
+    return loadedSprites or nil
+  end
+
+  return function(pokemon, speciesId, data)
+    local fn = export()
+    if not fn then return nil, false end
+    -- A FORM is asked for as "base species, wearing form X", never by its own
+    -- compound id -- the registry keys form art underneath the BASE species,
+    -- so CHARIZARD_MEGA_X matches no entry at all.  Same rule, and the same
+    -- squashed-spelling retry, as src/dexpage.lua's own art lookup; sharing
+    -- that function is what keeps the two games spelling a form alike.
+    local record = type(pokemon) == "table" and pokemon[speciesId] or nil
+    local lookupId, form, altForm = speciesId, nil, nil
+    if type(formCandidates) == "function" then
+      local ok, base, id, alt = pcall(formCandidates, record, speciesId)
+      if ok and type(base) == "string" then
+        lookupId, form, altForm = base, id, alt
+      end
+    end
+    local function ask(formId)
+      local ok, path = pcall(fn, { species = lookupId, side = "front",
+        kind = "dex", form = formId })
+      if not ok or type(path) ~= "string" or path == "" then return nil end
+      return path
+    end
+    local path = ask(form)
+    -- A form miss is silent -- it returns exactly what the base species
+    -- alone returns -- so it is detected rather than guessed at.
+    if altForm and path == ask(nil) then
+      local alt = ask(altForm)
+      if alt and alt ~= path then path, form = alt, altForm end
+    end
+    if not path then return nil, false end
+
+    -- Full colour unless the sprite mod says otherwise.  Its own hook answers
+    -- for the ctx it is given, so the form is passed on too and the flag
+    -- describes the very art resolved above.  The flag is only read when the
+    -- seam answered with a PATH: Sprites.path returns `nil, false` for a
+    -- species it cannot resolve at all, and reading that as "shade it" would
+    -- crush the art on exactly the species this feature exists for.  An
+    -- unreadable answer therefore keeps the default -- art supplied for this
+    -- is full colour, and the failure that costs a player something is
+    -- shading it, not leaving it alone.
+    local trueColor = true
+    local module = spritesModule()
+    if module and type(module.path) == "function" then
+      local ok, resolved, flag = pcall(module.path, data, lookupId, "front",
+        { kind = "dex", mon = form and { form = form } or nil })
+      if ok and type(resolved) == "string" and flag == false then
+        trueColor = false
+      end
+    end
+    return path, trueColor
+  end
+end
+
 -- ------------------------------------------------------------ engine patch
 
 -- Required once, guarded exactly the way src/dexpage.lua guards its own
@@ -177,9 +297,15 @@ end
 -- rather than taking the mod load down, and nothing here runs at file scope,
 -- so a headless test that only wants the pure half above never touches love.
 local function requireGen2Menu()
-  local ok, value = pcall(require, "src.ui.gen2.PokedexMenu")
-  if not ok or type(value) ~= "table" then return nil end
-  return value
+  local names = { "src.ui.gen2.PokedexMenu", "src.render.GbcPalette",
+    "src.world.gen2.Palettes" }
+  local mods = {}
+  for _, name in ipairs(names) do
+    local ok, value = pcall(require, name)
+    if not ok or type(value) ~= "table" then return nil end
+    mods[name] = value
+  end
+  return mods
 end
 
 -- installed guards against a second install patching the patch -- main.lua
@@ -191,15 +317,21 @@ local installed = false
 -- one thing this must never do is decide it is on Gold because a Gold-shaped
 -- method answered.  No `mod` handle is taken, unlike the siblings: everything
 -- this installs reads the running game off the menu instance it patches, and
--- an argument it never used would only suggest otherwise.
-function M.install(generation, buildFormList)
+-- an argument it never used would only suggest otherwise -- `resolveArt` is
+-- M.spriteArt's closure for the same reason, already holding whatever it
+-- needed of the mod API.
+function M.install(generation, buildFormList, resolveArt)
   if generation ~= 2 then return false end
   if installed then return false end
-  local PokedexMenu = requireGen2Menu()
-  if not PokedexMenu then return false end
+  local mods = requireGen2Menu()
+  if not mods then return false end
+  local PokedexMenu = mods["src.ui.gen2.PokedexMenu"]
+  local GbcPalette = mods["src.render.GbcPalette"]
+  local Palettes = mods["src.world.gen2.Palettes"]
   if type(PokedexMenu.rebuild) ~= "function"
     or type(PokedexMenu.update) ~= "function"
     or type(PokedexMenu.picFor) ~= "function"
+    or type(PokedexMenu.drawPic) ~= "function"
     or type(PokedexMenu.drawEntryBody) ~= "function" then
     return false
   end
@@ -356,6 +488,18 @@ function M.install(generation, buildFormList)
     end
   end
 
+  -- Which record's art the screen is actually showing: the browsed form while
+  -- one is selected, the row's own species otherwise.  Both halves below read
+  -- it, so the pic and the palette decision can never disagree about what is
+  -- on screen.
+  local function shownSpecies(self, species)
+    local formId = self.formId
+    if formId and formId ~= species and self.formBase == species then
+      return formId
+    end
+    return species
+  end
+
   -- The selected form's own art, resolved by asking the engine's own lookup
   -- for the FORM's record -- which reuses its path cache and its Unown
   -- special case rather than reimplementing either.  Falls back to the base
@@ -363,12 +507,144 @@ function M.install(generation, buildFormList)
   -- registered without a picture shows its base rather than a blank box.
   local originalPicFor = PokedexMenu.picFor
   function PokedexMenu:picFor(species)
-    local formId = self.formId
-    if formId and formId ~= species and self.formBase == species then
-      local ok, image = pcall(originalPicFor, self, formId)
+    local shown = shownSpecies(self, species)
+    if shown ~= species then
+      local ok, image = pcall(originalPicFor, self, shown)
       if ok and image then return image end
     end
     return originalPicFor(self, species)
+  end
+
+  -- ------- the sprite mod's art on Gold's dex
+  --
+  -- Cached per menu instance and per species, image and all: Gold reuses one
+  -- menu for every entry the player opens, and this is asked once per frame
+  -- per drawn pic.  `false` is a remembered MISS -- a species the neighbour
+  -- has nothing for must not be re-asked (and re-file-checked) every frame.
+  local function modArt(self, species)
+    if type(resolveArt) ~= "function" then return nil end
+    local cache = self.nationalDexArt
+    if not cache then cache = {} self.nationalDexArt = cache end
+    local hit = cache[species]
+    if hit == nil then
+      hit = false
+      local ok, path, trueColor = pcall(resolveArt, self.pokemon, species,
+        self.game and self.game.data)
+      if ok and type(path) == "string" and path ~= "" then
+        -- love.graphics.newImage rather than Assets.image: Assets keys its
+        -- cache by a path it resolves under the engine's own asset roots, and
+        -- this one is absolute and inside another mod's directory.
+        local loaded, image = pcall(love.graphics.newImage, path)
+        if loaded and image then
+          hit = { image = image, trueColor = trueColor and true or false }
+        end
+      end
+      cache[species] = hit
+    end
+    return hit or nil
+  end
+
+  -- The 7x7 tile block Pokedex_PlaceFrontpicTopLeftCorner lays for the pic,
+  -- in pixels (PokedexMenu.lua:436-452).
+  local PIC_BOX = 7 * 8
+
+  -- Run `body` with no shader bound, restoring whatever was bound before.
+  --
+  -- This is the palette bypass and the reason this whole draw is reimplemented
+  -- rather than delegated.  Gold's drawPic wraps the pic in
+  -- GbcPalette.with(colors, body) UNCONDITIONALLY (PokedexMenu.lua:480-484),
+  -- and that shader is a shade substitution: it recovers a 0..3 shade index
+  -- from the red channel and replaces it with one of four palette entries, so
+  -- full-colour art comes back wearing two colours -- a full-colour Totodile
+  -- rendered red.  The battle screen already has the opt-out this screen
+  -- lacks (src/ui/gen2/BattleState.lua:631 skips the wrap for trueColor art);
+  -- this is that same opt-out, on the one screen that never got one.
+  --
+  -- Captured and restored rather than merely cleared, exactly as
+  -- GbcPalette.with does: a caller further up may have one bound.
+  local function unshaded(body)
+    local G = love.graphics
+    local previous = G.getShader and G.getShader() or nil
+    if G.setShader then G.setShader() end
+    local ok, err = pcall(body)
+    if G.setShader then G.setShader(previous) end
+    if not ok then error(err, 0) end
+  end
+
+  -- Gold's own drawPic, for one image it cannot resolve itself.  The blank
+  -- square is kept because the art is fitted INSIDE the block rather than
+  -- filling it, and that fill (PokedexMenu.lua:470-472) is what puts a solid
+  -- colour behind the pic instead of the panel; the palette it reads is
+  -- picked the same way for the same reason (:459-467) -- the listing draws
+  -- every mon through the question-mark palette, the entry screen through the
+  -- species' own two colours.
+  local function drawModPic(self, row, art, tx, ty, ownColors)
+    local G = love.graphics
+    local colors
+    if ownColors then
+      colors = self.palettes and Palettes.monColors(self.palettes, row.species)
+    else
+      colors = self.gfx and self.gfx.questionMarkPalette
+    end
+    -- The backdrop follows the same rule as the draw below: palette art keeps
+    -- the cart's coloured square, full-colour art does not.  That square is
+    -- lifted from the palette's own lightest entry, which behind a two-shade
+    -- ROM pic reads as the pic's background and behind a full-colour sprite
+    -- reads as a coloured card it has been placed on -- Totodile on a green
+    -- tile.  Black instead, which is what the rest of the list panel already
+    -- is, so the art sits on the panel rather than on a swatch.
+    if art.trueColor then
+      G.setColor(0, 0, 0, 1)
+    else
+      local blank = colors and GbcPalette.color(colors, 1) or { 255, 255, 255 }
+      G.setColor(blank[1] / 255, blank[2] / 255, blank[3] / 255, 1)
+    end
+    G.rectangle("fill", tx * 8, ty * 8, PIC_BOX, PIC_BOX)
+
+    local image = art.image
+    local w, h = image:getWidth(), image:getHeight()
+    if not (w and h and w > 0 and h > 0) then return end
+    -- Fitted to the block, never enlarged.  The cart's own pics are 5x5, 6x6
+    -- or 7x7 tiles and PadFrontpic centres them; a sprite set's are whatever
+    -- the art dump ships (96px is ordinary), and the engine's answer to that
+    -- -- battle_sprite_scales -- is a BATTLE registry keyed to a battle box,
+    -- not to this one.  So the box itself decides: at 1:1 a 96px pic would
+    -- cover the No./name/height/weight column beside it.
+    local scale = math.min(PIC_BOX / w, PIC_BOX / h, 1)
+    -- Centred both ways.  The cart's own pics stand on the block's bottom edge
+    -- (PIC_PAD pads a 5x5 pic downward) so that a small mon shares a ground
+    -- line with a big one, and this followed that at first -- but a sprite
+    -- set's art is not drawn to that convention: it arrives already trimmed to
+    -- its own bounds at whatever aspect the dump ships, so bottom-pinning it
+    -- leaves a wide, short sprite sitting on the floor with all the empty
+    -- space above it.  Centring is the honest fit for art whose framing this
+    -- mod does not control.  Only ever applied here, to art this mod supplied;
+    -- Gold's own pics never reach this function.
+    local x = tx * 8 + math.floor((PIC_BOX - w * scale) / 2)
+    local y = ty * 8 + math.floor((PIC_BOX - h * scale) / 2)
+    G.setColor(1, 1, 1, 1)
+    local function body() G.draw(image, x, y, 0, scale, scale) end
+    -- A four-shade NATIVE set is art the palette is RIGHT for, and it comes
+    -- through this same seam, so the flag decides rather than the source.
+    if art.trueColor or not (colors and GbcPalette.available()) then
+      unshaded(body)
+    else
+      GbcPalette.with(colors, body)
+    end
+  end
+
+  local originalDrawPic = PokedexMenu.drawPic
+  function PokedexMenu:drawPic(row, tx, ty, ownColors)
+    -- An unseen species is the question mark, never a mon's art -- the dex
+    -- must not leak what the player has not met.
+    local art = row and row.seen
+      and modArt(self, shownSpecies(self, row.species)) or nil
+    if not art then return originalDrawPic(self, row, tx, ty, ownColors) end
+    -- A failure here falls back to the cart's own pic rather than leaving the
+    -- block empty: this is an optional integration and the screen behind it
+    -- works without it.
+    if pcall(drawModPic, self, row, art, tx, ty, ownColors) then return end
+    originalDrawPic(self, row, tx, ty, ownColors)
   end
 
   -- A form's label goes where the base species' category sits.  Nothing else
@@ -429,8 +705,8 @@ function M.byName(pokemon, ids)
   return out
 end
 
-setmetatable(M, { __call = function(_, generation, buildFormList)
-  return M.install(generation, buildFormList)
+setmetatable(M, { __call = function(_, generation, buildFormList, resolveArt)
+  return M.install(generation, buildFormList, resolveArt)
 end })
 
 return M
