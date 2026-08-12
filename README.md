@@ -29,12 +29,17 @@ data.
   own battle math already reads — Red, Blue and Yellow's single collapsed
   value, Gold's own native split — rather than replacing it. The engine's
   damage maths is untouched either way.
-- **A Pokédex STATS page** with left/right form browsing, and a party summary
-  that shows the split when you want it — **Red, Blue and Yellow only.** Gold's
-  dex entry screen and party summary are different classes entirely; this mod
-  detects that they're missing and stands down, so it still loads fine and
-  everything else here still works — those two extra displays simply don't
-  appear.
+- **A Pokédex STATS page** with LEFT/RIGHT form browsing, and a party summary
+  that shows the split when you want it — **Red, Blue and Yellow only.** Gold
+  shows SPCL.ATK and SPCL.DEF natively, so it needs neither.
+- **On Gold specifically**: the dex lists every species past #251, alternate
+  forms browse on UP/DOWN (LEFT/RIGHT already move that screen's action bar),
+  and both the dex and the party summary draw the art you picked in the sprite
+  mod rather than the cart's own pics. Without that mod, or with it disabled,
+  both screens look exactly as they did.
+- **Plays alongside Useful Dex.** That mod replaces the dex screen; this one
+  augments what it builds rather than competing for it, so its pages keep
+  working and form browsing keeps working inside them.
 - **A read API for other mods** — see **[INSTRUCTION.md](INSTRUCTION.md)**.
 
 ## For mod developers
@@ -67,9 +72,8 @@ Then enable it and set its options:
 - `NATIONAL DEX: ON`
 - `TYPE CHART: GEN 1 | GEN 2 | MODERN` — the effectiveness era to play by
 - `STATS: GEN 1 | MODERN` — display only; MODERN splits Special into Sp.Atk and
-  Sp.Def on the dex and party screens, on Red, Blue and Yellow. The option is
-  harmless but has no effect on Gold, since neither screen exists there — see
-  above
+  Sp.Def on the dex and party screens. Red, Blue and Yellow only: Gold splits
+  Special natively and shows both already, so the option does nothing there
 
 ## Assets
 

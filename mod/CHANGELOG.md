@@ -3,6 +3,53 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.14.1
+
+### Fixed
+
+- A form selected inside `useful_dex` showed the BASE species' base stats,
+  BST and typing. That mod caches its stat rows on its own screen object
+  rather than reading the record each draw, so cycling a form never reached
+  them. Its cached table and a stand-in record are now substituted for the
+  duration of its draw and restored immediately after, on the error path too.
+- The total is re-summed from the rows actually substituted rather than
+  copied, so the column adds up.
+
+### Notes
+
+- The stand-in is a shallow copy of the BASE record with only `types`
+  replaced, so the page keeps printing the base species' dex number, name and
+  entry -- a form's own `dex` is a synthetic key and must never be rendered.
+- If the neighbour's table is not shaped as expected, the substitution
+  declines entirely -- types included, so the page is never half-changed --
+  and says so once in the log.
+- The movelist page still lists the base species' moves while a form is
+  selected. That is unchanged and deliberate: it is built outside the draw.
+
+
+## 0.14.0
+
+### Added
+
+- Alternate-form browsing works again when `useful_dex` is installed. That mod
+  replaces the dex screen and owns its update and draw, so LEFT/RIGHT never
+  reached this mod's handler even though the form state was already sitting on
+  the vanilla screen it delegates to. Its registered factory is now wrapped in
+  memory after it loads, augmenting the instance it builds rather than
+  competing for the screen id -- registering the same id errors outright.
+  LEFT and RIGHT are unbound on that screen, so no key was taken from it.
+
+### Notes
+
+- Its files and class are never touched; everything is instance-level and
+  lasts one boot. If its shape is not what this expects -- no delegate, or
+  either method missing -- the augmentation declines and says so, and the
+  whole of it is guarded so a throw cannot make the engine fall back to the
+  builtin screen, which would cost that mod every one of its own features.
+- The entry page still prints the BASE species' dex number on a form, the
+  same rule this mod's own page follows.
+
+
 ## 0.13.1
 
 ### Fixed

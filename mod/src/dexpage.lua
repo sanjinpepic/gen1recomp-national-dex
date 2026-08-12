@@ -263,6 +263,37 @@ function M.install(mod, generation)
     self.spriteTrueColor = sprite and trueColor or self.baseSpriteTrueColor
   end
 
+  -- Anchor the form list on whatever species `self.def` currently names, and
+  -- select the base entry.  Both the list and the art LEFT/RIGHT falls back
+  -- to are species-specific, so this has to run again every time something
+  -- moves `self.def` -- a list left over from the previous species would
+  -- cycle to the forms of a mon that is no longer on the page.
+  local function captureForms(self)
+    self.baseSpeciesId = self.def.baseSpecies or self.def.id
+    self.baseSprite = self.sprite
+    self.baseSpriteTrueColor = self.spriteTrueColor
+    self.forms = M.buildFormList(self.game and self.game.data
+      and self.game.data.pokemon, self.baseSpeciesId)
+    applyForm(self, 1)
+  end
+
+  -- One LEFT/RIGHT step through self.forms, wrapping at both ends.  Returns
+  -- true only when the selection actually moved, so a caller with its own
+  -- per-form state to repair can tell a press apart from a quiet frame.
+  local function cycleForms(self, input)
+    local forms = self.forms
+    if not forms or #forms < 2 then return false end
+    local n = #forms
+    if input:wasPressed("left") then
+      applyForm(self, ((self.formIndex - 2) % n) + 1)
+      return true
+    elseif input:wasPressed("right") then
+      applyForm(self, (self.formIndex % n) + 1)
+      return true
+    end
+    return false
+  end
+
   -- Is a Pokédex entry the screen being put together, or the screen already
   -- standing?  Both halves are needed and they are different moments: a
   -- replacement screen resolves its pic inside its own constructor, BEFORE
@@ -289,12 +320,7 @@ function M.install(mod, generation)
         error("no species record", 0)
       end
       self.page = 1
-      self.baseSpeciesId = self.def.baseSpecies or self.def.id
-      self.baseSprite = self.sprite
-      self.baseSpriteTrueColor = self.spriteTrueColor
-      self.forms = M.buildFormList(game.data and game.data.pokemon,
-        self.baseSpeciesId)
-      applyForm(self, 1)
+      captureForms(self)
     end)
     if not ok and type(self) == "table" then
       self.page = self.page or 1
@@ -324,15 +350,7 @@ function M.install(mod, generation)
       elseif self.page == 2 and input:wasPressed("up") then
         self.page = 1
       end
-      local forms = self.forms
-      if forms and #forms > 1 then
-        local n = #forms
-        if input:wasPressed("left") then
-          applyForm(self, ((self.formIndex - 2) % n) + 1)
-        elseif input:wasPressed("right") then
-          applyForm(self, (self.formIndex % n) + 1)
-        end
-      end
+      cycleForms(self, input)
     end)
   end
 
@@ -415,8 +433,10 @@ function M.install(mod, generation)
   -- instead of patching it.  Such a screen still builds a real DexEntryMenu
   -- underneath and delegates to it -- so everything above still runs -- but it
   -- draws its own pages and reads its own input, which means the STATS page
-  -- and form browsing above are bypassed for as long as it is installed.
-  -- That is its screen to own and nothing here fights it for the stack.
+  -- above is bypassed for as long as it is installed.  That is its screen to
+  -- own and nothing here fights it for the stack.  Form browsing is a
+  -- different case and comes back on keys the neighbour leaves free; see
+  -- "borrowing LEFT/RIGHT back" below.
   --
   -- The PIC is a different matter, because neither side can see the whole of
   -- it.  A replacement screen resolves its own art and is free to ask under
@@ -450,17 +470,276 @@ function M.install(mod, generation)
       return neighbourOwnsEntry and (building or stacked > 0)
     end
 
+    -- ------------------------------------------ borrowing LEFT/RIGHT back
+    --
+    -- The pages are the neighbour's and stay the neighbour's, but the two
+    -- directions form browsing needs are not in use.  useful_dex 1.3.0 reads
+    -- exactly four buttons on the entry -- B pops, A cycles data/movelist,
+    -- UP/DOWN page the movelist or step the seen species -- so LEFT and RIGHT
+    -- can carry forms again without taking a key off a feature that has one.
+    -- Rebinding a key a neighbour already used would be trading its feature
+    -- for ours, which is not a trade this mod gets to make.
+    --
+    -- The instance is augmented, never the class and never the files: the
+    -- registered factory is wrapped in memory for one boot, and everything
+    -- below is written onto the object that wrap returns.  Registering the id
+    -- a second time is not an alternative -- screens are a record registry
+    -- and a duplicate register raises (src/mods/Registry.lua).
+    -- ------------------------------- the numbers on the neighbour's page
+    --
+    -- Selecting a form has to move what the page PRINTS, not just its art.
+    -- The neighbour draws its stat rows out of a table it built once for the
+    -- species (useful_dex 1.3.0 caches it in setSpecies and prints it, total
+    -- included, straight from the cache), and it reads its type rows off its
+    -- own `def`.  Neither moves when LEFT/RIGHT selects a form, so both are
+    -- substituted for the length of one draw call and restored immediately
+    -- after -- see the draw wrap below for why that window is so tight.
+    --
+    -- Row key -> the field it comes from on a record's baseStats.  Only the
+    -- five a Gen 1 page prints are listed, deliberately: an unrecognised key
+    -- means the page is printing a number whose form value this cannot know,
+    -- and the whole substitution is declined rather than applied to the rows
+    -- it does recognise.  A column where some numbers moved to the form and
+    -- the rest stayed the base species' would be a worse lie than a column
+    -- where none of them moved.
+    local STAT_FIELD = {
+      HP = "hp", ATK = "attack", DEF = "defense",
+      SPD = "speed", SPC = "special",
+    }
+
+    local statsDeclined = false
+    local function declineStats()
+      if statsDeclined then return end
+      statsDeclined = true
+      mod.log:info("the Pokédex entry screen another mod owns prints stat "
+        .. "rows this mod cannot map onto a form -- its art and label still "
+        .. "cycle, the numbers beside them stay the base species'")
+    end
+
+    -- `record`'s stats in the shape the neighbour built for the base species,
+    -- or nil when that shape is not one this can move.  The rows keep the
+    -- neighbour's own keys and order -- this is its page and its layout, and
+    -- the STATS option's split rows are not ours to impose on it -- and every
+    -- other field of its table is carried across untouched, since it may be
+    -- read somewhere this cannot see.  The total is recomputed from the rows
+    -- actually substituted rather than copied, or it would still be the base
+    -- species' sum sitting under the form's numbers.
+    local function formStats(cached, record)
+      if type(cached) ~= "table" or type(cached.stats) ~= "table" then
+        return nil
+      end
+      if #cached.stats == 0 then return nil end
+      local base = record.baseStats
+      if type(base) ~= "table" then return nil end
+      local rows, total = {}, 0
+      for i, row in ipairs(cached.stats) do
+        if type(row) ~= "table" then return nil end
+        local field = STAT_FIELD[row.key]
+        local value = field and base[field]
+        if type(value) ~= "number" then return nil end
+        rows[i] = { key = row.key, value = value }
+        total = total + value
+      end
+      local swapped = {}
+      for key, value in pairs(cached) do swapped[key] = value end
+      swapped.stats, swapped.bst = rows, total
+      return swapped
+    end
+
+    -- A stand-in record for the same one draw: the base species' own fields
+    -- with the types replaced, never the form record itself.  Name, kind,
+    -- HT/WT, the owned lookup and above all the No. are read from this same
+    -- table, and a form's `dex` is a synthetic key that must never be printed
+    -- (see the file banner).  Copying the base rather than pointing at the
+    -- form keeps that true by construction instead of by a check.
+    local function formDef(baseDef, record)
+      local swapped = {}
+      for key, value in pairs(baseDef) do swapped[key] = value end
+      if type(record.types) == "table" then swapped.types = record.types end
+      return swapped
+    end
+
+    local function augmentable(screen)
+      return type(screen) == "table"
+        and type(screen.update) == "function"
+        and type(screen.draw) == "function"
+        and type(screen.vanilla) == "table"
+        and type(screen.vanilla.def) == "table"
+        and type(screen.vanilla.forms) == "table"
+    end
+
+    local function augment(screen)
+      local delegate = screen.vanilla
+
+      -- Re-anchor on the art the NEIGHBOUR resolved rather than on what the
+      -- vanilla constructor loaded: a replacement screen looks the pic up a
+      -- second time on the way out of its own constructor and writes the
+      -- result onto the delegate, so the sprite captured during construction
+      -- is already stale.  Cycling back to the base form has to land on the
+      -- image the player was actually looking at, not on an earlier one.
+      local function reanchor() pcall(captureForms, delegate) end
+      reanchor()
+
+      -- Stepping the seen species moves the delegate's def and sprite
+      -- wholesale, and the form list anchored on the old species has to go
+      -- with it.  Wrapped on the instance, so the neighbour's class keeps
+      -- the method it shipped with for any other screen sharing it.
+      if type(screen.setSpecies) == "function" then
+        local originalSetSpecies = screen.setSpecies
+        screen.setSpecies = function(s, ...)
+          originalSetSpecies(s, ...)
+          reanchor()
+        end
+      end
+
+      local originalUpdate = screen.update
+      screen.update = function(s, dt)
+        originalUpdate(s, dt)
+        pcall(function()
+          -- Only over the page that shows a pic.  The movelist is built for
+          -- one species and cycling underneath it would swap art nobody can
+          -- see while leaving the rows describing the entry before.
+          if s.view == "moves" then return end
+          if not cycleForms(delegate, s.game.input) then return end
+          -- A neighbour may be driving an ANIMATED base sprite, rewriting
+          -- the delegate's sprite from another mod's frame files as it goes.
+          -- Left running it would paint over a selected form frame by frame,
+          -- so it is parked while one is shown and rebuilt by the
+          -- neighbour's own code on the way back to the base entry.
+          if delegate.formIndex ~= 1 then
+            s.crystalAnimation = nil
+          elseif type(s.setupCrystalAnimation) == "function" then
+            pcall(s.setupCrystalAnimation, s)
+          end
+        end)
+      end
+
+      -- What the selected form's page needs, memoised.  The key is the
+      -- identity of everything it was derived from, so it is rebuilt after a
+      -- cycle AND after the neighbour rebuilds its own table for another
+      -- species, while an unchanged frame costs one comparison.  Invalidating
+      -- from the update wrap instead would have to guess at every route that
+      -- can move the neighbour's state; this cannot go stale.
+      local view, viewFrom = nil, nil
+
+      local function substitution(s)
+        local record = delegate.formRecord
+        if delegate.formIndex == 1 or type(record) ~= "table" then return nil end
+        if rawequal(record, delegate.def) then return nil end
+        if type(s.stats) ~= "table" or type(s.def) ~= "table" then return nil end
+        if view and rawequal(viewFrom.record, record)
+          and rawequal(viewFrom.stats, s.stats)
+          and rawequal(viewFrom.def, s.def) then
+          return view
+        end
+        local stats = formStats(s.stats, record)
+        if not stats then
+          declineStats()
+          return nil
+        end
+        view = { stats = stats, def = formDef(s.def, record) }
+        viewFrom = { record = record, stats = s.stats, def = s.def }
+        return view
+      end
+
+      local originalDraw = screen.draw
+      screen.draw = function(s)
+        local savedStats, savedDef = s.stats, s.def
+        local swapped = false
+        -- The movelist page is built for one species and prints no stats, so
+        -- there is nothing there for a form to move: it draws untouched.
+        if s.view ~= "moves" then
+          local ok, substituted = pcall(substitution, s)
+          if ok and substituted then
+            s.stats, s.def = substituted.stats, substituted.def
+            swapped = true
+          end
+        end
+        local ok, err = pcall(originalDraw, s)
+        -- Restored before anything else can run, the throwing path included.
+        -- A swap left standing would not merely mis-draw one frame: the
+        -- neighbour's own cached table would be gone and its `def` would be a
+        -- stand-in, so every species the player stepped to afterwards would
+        -- be captioned with one form's numbers.
+        if swapped then s.stats, s.def = savedStats, savedDef end
+        if not ok then error(err, 0) end
+        if s.view ~= "moves" then pcall(drawFormChrome, delegate) end
+      end
+    end
+
+    -- Swap `.new` on the record in place rather than putting a fresh table
+    -- into data.screens: Screens.resolve caches the record TABLE and reads
+    -- `.new` off it at every build, so an in-place swap takes effect whether
+    -- or not something already resolved this id, while a replacement table
+    -- would be ignored by an already-warmed cache.  A bare function is a
+    -- legal record too (src/ui/Screens.lua resolve), and that one has no
+    -- field to swap, so it is boxed instead.
+    -- Whether form browsing actually came back cannot be known at load: the
+    -- registry holds a factory, and only the screen it builds says whether
+    -- there is anything to hang forms off.  So the load-time line reports the
+    -- part that is already settled -- the STATS page is the neighbour's now --
+    -- and the first entry the player opens reports the rest, once, whichever
+    -- way it went.
+    local announced = false
+    local function announce(message)
+      if announced then return end
+      announced = true
+      mod.log:info(message)
+    end
+
+    local function wrapEntryFactory(screens)
+      local record = screens.DexEntryMenu
+      local originalNew
+      if type(record) == "table" and type(record.new) == "function" then
+        originalNew = record.new
+      elseif type(record) == "function" then
+        originalNew = record
+      else
+        return false
+      end
+      local function wrapped(...)
+        local screen = originalNew(...)
+        -- A factory that throws is degraded to the builtin screen
+        -- (src/ui/Screens.lua build), which would drop the neighbour's whole
+        -- feature set on the floor.  Nothing added here may be the reason
+        -- that happens, so the augmentation is guarded end to end.
+        if augmentable(screen) then
+          pcall(augment, screen)
+          announce("form browsing is back on LEFT/RIGHT over the Pokédex "
+            .. "entry screen another mod owns -- the two directions it reads "
+            .. "nowhere itself")
+        else
+          announce("the Pokédex entry screen another mod supplies is not "
+            .. "shaped to carry form browsing -- leaving it as it is")
+        end
+        return screen
+      end
+      if type(record) == "table" then
+        record.new = wrapped
+      else
+        screens.DexEntryMenu = { new = wrapped }
+      end
+      return true
+    end
+
     -- Asked after every mod has registered and the screens registry has been
     -- merged into data.screens, so the answer does not depend on load order.
     -- A registry hit means some mod replaced the screen; the builtin is the
-    -- require fallback and never appears there.
+    -- require fallback and never appears there.  It is also the one moment
+    -- the factory can be wrapped: every registration is in, and nothing has
+    -- opened a Pokédex yet.
     mod.events:on("mods.loaded", function(payload)
       local screens = payload and payload.data and payload.data.screens
       neighbourOwnsEntry = screens ~= nil and screens.DexEntryMenu ~= nil
       if not neighbourOwnsEntry then return end
       mod.log:info("another mod owns the Pokédex entry screen -- its pages "
-        .. "replace this mod's STATS page and form browsing; species data and "
-        .. "dex art still come from here")
+        .. "replace this mod's STATS page; species data and dex art still "
+        .. "come from here")
+      local ok, wrapped = pcall(wrapEntryFactory, screens)
+      if not (ok and wrapped) then
+        announce("that mod supplies no entry factory this one can extend -- "
+          .. "form browsing stays off while it is installed")
+      end
     end)
 
     -- screen.pushed/popped carry the state with the id Screens.build stamped
