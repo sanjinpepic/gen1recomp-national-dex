@@ -200,6 +200,80 @@ return function(mod)
     Dexscroll(mod, generation, Dexview and Dexview.apply or nil)
   end
 
+  -- The Pokédex free-text SEARCH (Task 11).  src/dexsearch.lua is the pure
+  -- query both games share -- one matcher, so "giga drain" means the same
+  -- thing on Red and on Gold -- and src/searchindex.lua reads back the
+  -- generated reverse index that gives the move and ability vocabularies
+  -- something to answer against.  Loaded here, beside the listing patches,
+  -- because both screens need it: Gen 1's own further down and Gold's inside
+  -- the Gen2Dex block below.
+  --
+  -- src/dexsearchview.lua is loaded unconditionally too, on both boots, but
+  -- only for the pure half at the top of that file (M.edit, M.MAX_LEN) --
+  -- Gold shares Gen 1's typing table because which key means which character
+  -- is a fact about a keyboard, not about a generation.  M.new, which is the
+  -- half that reaches for love and the Gen 1 engine classes, is never called
+  -- except from the Gen 1 branch below.
+  local Search = loadSibling(mod, "src/dexsearch.lua")
+  local Searchindex = loadSibling(mod, "src/searchindex.lua")
+  local Searchview = loadSibling(mod, "src/dexsearchview.lua")
+  -- Generated, like national.lua and the type charts, and allowed to be
+  -- missing the same way -- but unlike them, a missing search index costs
+  -- only PART of the feature rather than all of it: name and type search
+  -- read the listing's own rows and need nothing from here, so they keep
+  -- working.  Only the ability and move vocabularies, which have nowhere
+  -- else to come from, go unanswered.
+  local searchPayload = loadOptionalSibling(mod,
+    "data/species/generated/search_index.lua")
+  if Search and Searchindex then
+    Search.useIndex(Searchindex)
+  end
+  if Search and not searchPayload then
+    mod.log:info("data/species/generated/search_index.lua is missing -- "
+      .. "Pokédex search by name and type still works, but ability and move "
+      .. "terms will read as unknown until the mod zip is reinstalled; the "
+      .. "payload is generated, and a partial extract is the usual cause")
+  end
+
+  -- Gen 1's SEARCH screen opens from the listing's SELECT, which
+  -- src/dexview.lua's `augment` binds only once M.openSearch is set -- see
+  -- that file's own comment on the seam.  Assigned onto the SAME Dexview
+  -- local loaded above rather than a second load of the file: a second load
+  -- compiles a second module instance with its own private `marks` table,
+  -- and the SELECT mark this closure relies on would then be checked against
+  -- a table no handler was ever entered into.
+  if generation ~= 2 and Dexview and Search and Searchview then
+    Dexview.openSearch = function(list, rows, handle)
+      -- The vocabulary is built from the ROWS the listing is showing right
+      -- now -- every one of them, known or not, the same way
+      -- src/gen2dexsearch.lua's own beginSearch builds Gold's -- so a search
+      -- result and the listing behind it are reading the same species list.
+      local vocab = { names = {}, types = {}, payload = searchPayload }
+      for _, row in ipairs(rows) do
+        vocab.names[Search.normalise(row.name)] = true
+        for _, id in ipairs(row.types or {}) do
+          vocab.types[Search.normalise(id)] = true
+        end
+      end
+      local screen = Searchview.new(list.game, {
+        Search = Search,
+        vocab = vocab,
+        rows = rows,
+        onPick = function(row) Dexview.openEntry(list, row, handle) end,
+      })
+      if not screen then
+        if handle and handle.log then
+          handle.log:info("the Pokédex search screen failed to build -- the "
+            .. "engine did not hand back the font, string, naming or input "
+            .. "modules it needs, so SELECT leaves the listing exactly as "
+            .. "it was")
+        end
+        return
+      end
+      list.game.stack:push(screen)
+    end
+  end
+
   -- Gold draws neither of the screens above: its #DEX is its own class, sized
   -- from the cart's dex table rather than from the dexSize constant Gen 1
   -- reads, so the beyond-251 species this mod registers never reached the
@@ -244,6 +318,59 @@ return function(mod)
         levelUpSection = Dexpage.levelUpSection,
         paginate = Dexpage.paginate,
       } or nil)
+
+    -- Gold's own free-text SEARCH (src/gen2dexsearch.lua), installed onto the
+    -- SAME PokedexMenu class Gen2Dex just patched above -- require() caches
+    -- by module name, so asking for "src.ui.gen2.PokedexMenu" again here
+    -- hands back that identical, already-patched table rather than a second
+    -- one.  Resolved by its real Gen 2 name, and Gold's naming screen with
+    -- it, because require() is NOT redirected on a Gold boot: the bare
+    -- "src.ui.PokedexMenu"/"src.ui.NamingScreen" names would answer with Gen
+    -- 1's classes even here.  Gated on generation == 2 so a Gen 1 boot never
+    -- reaches for either -- src/gen2dexlist.lua only calls beginSearch once
+    -- its own nationalDexSearchInstalled marker is set, and that marker
+    -- exists so a Gen 1 boot can never trip it.
+    if generation == 2 and Search then
+      local Gen2Search = loadSibling(mod, "src/gen2dexsearch.lua")
+      if Gen2Search then
+        local okMenu, GoldPokedexMenu = pcall(require, "src.ui.gen2.PokedexMenu")
+        local okNaming, GoldNamingScreen = pcall(require, "src.ui.gen2.NamingScreen")
+        if okMenu and type(GoldPokedexMenu) == "table"
+          and okNaming and type(GoldNamingScreen) == "table" then
+          -- shiftDown is not part of src/dexsearchview.lua's exports -- it is
+          -- a three-line love.keyboard read local to that file's own screen,
+          -- not pure, and not something a headless test of that file should
+          -- have to pull love in behind.  Repeated here rather than widening
+          -- that file's public table for this one caller.
+          local function shiftDown()
+            return love and love.keyboard and love.keyboard.isDown
+              and (love.keyboard.isDown("lshift") or love.keyboard.isDown("rshift"))
+          end
+          local installedSearch = Gen2Search.install(GoldPokedexMenu, {
+            Search = Search,
+            NamingScreen = GoldNamingScreen,
+            -- Shared with Gen 1 rather than copied: which key means which
+            -- character is a fact about a keyboard, not about a generation.
+            edit = Searchview and Searchview.edit or nil,
+            -- charFor decides whether a key is TEXT at all.  Without it the
+            -- Gold field cannot tell a letter from a d-pad press, and the
+            -- choice is not "consume or ignore" but "consume or hand back":
+            -- a key it swallows without using is a key that never reaches
+            -- Input, which is how a field ends up eating the very presses a
+            -- player needs to leave it.
+            charFor = Searchview and Searchview.charFor or nil,
+            MAX_LEN = Searchview and Searchview.MAX_LEN or nil,
+            shiftDown = shiftDown,
+            describeRows = Dexview and Dexview.describe or nil,
+            payload = searchPayload,
+          })
+          if not installedSearch then
+            mod.log:info("Gold's Pokédex search screen failed to install -- "
+              .. "#DEX keeps the cart's own TYPE1/TYPE2 SEARCH view")
+          end
+        end
+      end
+    end
   end
 
   -- Gold's party SUMMARY has the same two problems its #DEX had -- it reads

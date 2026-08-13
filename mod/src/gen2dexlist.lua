@@ -612,71 +612,30 @@ function M.pageStepTo(page, step, count)
   return index
 end
 
--- ------------------------------------------- the SEARCH screen's vocabulary
+-- ------------------------------------------- a type label's real id
 --
--- Gold's SEARCH screen walks a wheel of type names and matches them against a
--- species record's own `types` (src/ui/gen2/PokedexMenu.lua:1336-1346).  Those
--- two are spelled in different alphabets, and for one type of the eighteen the
--- spellings differ: the wheel offers the DISPLAY name PSYCHIC while every
--- record -- the cart's own, extracted through the ROM's type table
--- (src/import/RomExtractorGen2.lua:1516), and this mod's generated data alike
--- -- carries the CONSTANT id PSYCHIC_TYPE.  The engine compares the two raw
--- strings, so PSYCHIC is one wheel position in eighteen that can never match
--- anything.  That is the stock cart's behaviour too, not something this mod
--- introduced; it is fixed here because this mod is what makes the wheel worth
--- using on an 1100-species roster.
---
--- Only the string the COMPARISON uses is translated.  The label stays PSYCHIC
--- on screen: a player reading the wheel expects the name the rest of the game
--- prints, and PSYCHIC_TYPE is an implementation detail leaking out of the ROM.
+-- The free-text search (src/gen2dexsearch.lua) classifies a term against the
+-- DISPLAY names a player reads on screen, and matches it against a species
+-- record's own `types`.  Those two are spelled in different alphabets, and
+-- for one type of the eighteen the spellings differ: the display name is
+-- PSYCHIC while every record -- the cart's own, extracted through the ROM's
+-- type table (src/import/RomExtractorGen2.lua:1516), and this mod's
+-- generated data alike -- carries the CONSTANT id PSYCHIC_TYPE.  A raw string
+-- compare therefore leaves PSYCHIC a guaranteed "not found", the same bug
+-- Gold's own cart wheel had before this mod retired it -- fixed here because
+-- reconciling the two spellings is not particular to the wheel that first
+-- needed it.
 --
 -- Derived from M.TYPE_NAMES rather than spelled a second time, so the table
 -- that prints a type and the table that searches for one cannot drift apart.
 M.SEARCH_TYPE_IDS = {}
 for id, label in pairs(M.TYPE_NAMES) do M.SEARCH_TYPE_IDS[label] = id end
 
--- The id a record would carry for a wheel label.  Every other type is its own
--- id, so an unmapped label is returned unchanged.
+-- The id a record would carry for a display label.  Every other type is its
+-- own id, so an unmapped label is returned unchanged.
 function M.searchTypeId(label)
   if type(label) ~= "string" then return label end
   return M.SEARCH_TYPE_IDS[label] or label
-end
-
--- What the wheel is missing for this mod's roster.
---
--- FAIRY, and only FAIRY.  Gold's wheel is the seventeen types its own cart
--- knows plus the "-----" wildcard, and 59 of the species this mod registers
--- carry FAIRY -- along with five of the cart's own that the modern type chart
--- repatches onto it -- so without a wheel position not one of them can be
--- found by type at all.
---
--- ??? (CURSE_TYPE) is deliberately NOT added.  It is the other name
--- M.TYPE_NAMES has to spell around, so it looks like the obvious second
--- entry, but no record in this mod's generated data carries it and the cart
--- gives it to no species either -- it exists to type the move CURSE and
--- nothing else.  A wheel position for it would be exactly the guaranteed
--- "not found" that PSYCHIC was, added on purpose.
-M.SEARCH_TYPES_ADDED = { "FAIRY" }
-
--- Appends whatever `added` holds that `wheel` does not, in order, and answers
--- how many entries it added.  Idempotent by construction: the wheel is a
--- process-global table on a class this mod does not own, and a second install
--- or a reload that put FAIRY on it twice would give the type two positions
--- with the wheel reading the same word at both.
-function M.widenSearchTypes(wheel, added)
-  if type(wheel) ~= "table" then return 0 end
-  added = type(added) == "table" and added or M.SEARCH_TYPES_ADDED
-  local have = {}
-  for _, name in ipairs(wheel) do have[name] = true end
-  local count = 0
-  for _, name in ipairs(added) do
-    if not have[name] then
-      wheel[#wheel + 1] = name
-      have[name] = true
-      count = count + 1
-    end
-  end
-  return count
 end
 
 -- ------------------------------------------------- the sprite mod's art
@@ -963,8 +922,6 @@ function M.install(generation, buildFormList, resolveArt, scroll, mod,
     or type(PokedexMenu.cursorVisible) ~= "function"
     or type(PokedexMenu.printNumString) ~= "function"
     or type(PokedexMenu.beginSearch) ~= "function"
-    or type(PokedexMenu.searchTypeName) ~= "function"
-    or type(PokedexMenu.SEARCH_TYPES) ~= "table"
     or type(PokedexMenu.drawEntryBody) ~= "function" then
     return false
   end
@@ -1058,67 +1015,14 @@ function M.install(generation, buildFormList, resolveArt, scroll, mod,
 
   -- ------- the SEARCH screen
   --
-  -- Three repairs to the cart's own screen, no new furniture.  Everything the
-  -- screen already does right is left to it: beginSearch walks self.rows --
-  -- the LIVE listing this file widens, so the beyond-251 species are searchable
-  -- with nothing done for them -- and it searches SEEN species only, which is
-  -- the rule that keeps the dex from leaking what the player has not met.
-  -- Only its vocabulary and the list it starts from are wrong, so it is wrapped
-  -- rather than reimplemented.
-
-  -- 1. FAIRY joins the wheel.  Both places that step it read #SEARCH_TYPES
-  -- live (PokedexMenu.lua:1309, :1316), so appending is the whole of it; the
-  -- name is five cells in a seven-cell field at column 10, so it draws inside
-  -- the box exactly as ELECTRIC's eight already do.
-  M.widenSearchTypes(PokedexMenu.SEARCH_TYPES)
-
-  -- 2. The wheel's label, translated to the id a record carries -- and ONLY
-  -- for the comparison.  See M.SEARCH_TYPE_IDS for why PSYCHIC can otherwise
-  -- never match anything.
-  --
-  -- The engine asks this one method for both jobs, printing and matching
-  -- (:1397-1398 and :1336-1337), and passes nothing that tells them apart, so
-  -- the flag below marks the single call that wants the record's spelling.
-  -- Set for the duration of the wrapped call and cleared however it ends: a
-  -- flag left standing would put PSYCHIC_TYPE on the screen the player reads.
-  local originalSearchTypeName = PokedexMenu.searchTypeName
-  function PokedexMenu:searchTypeName(slot)
-    local label = originalSearchTypeName(self, slot)
-    if self.nationalDexSearchIds then return M.searchTypeId(label) end
-    return label
-  end
-
-  -- 3. Every search runs against the WHOLE listing.
-  --
-  -- The engine's own ends with `self.rows = results` (:1358) and self.rows is
-  -- also the list it searches, so on the cart a second search can only narrow
-  -- the first -- and nothing puts the full list back except an actual mode
-  -- change, :rebuild()'s only other caller (:1144-1148), or closing the dex.
-  -- Searching FIRE and then WATER answers "No <PK><MN> found!" on a roster
-  -- full of both, with no way out of it the screen mentions.
-  --
-  -- Restored through :rebuild() rather than from a list kept here, so this
-  -- composes with this file's own rebuild wrap instead of racing it: the
-  -- widened dex view and the save's current seen/caught flags are what get
-  -- rebuilt, exactly as they are for a mode change.
-  local originalBeginSearch = PokedexMenu.beginSearch
-  function PokedexMenu:beginSearch()
-    local rows, index, scroll = self.rows, self.index, self.scroll
-    -- A rebuild that failed leaves the previous rows in place, which is the
-    -- behaviour this replaces rather than a broken screen.
-    pcall(function() self:rebuild() end)
-    self.nationalDexSearchIds = true
-    local ok, err = pcall(originalBeginSearch, self)
-    self.nationalDexSearchIds = nil
-    -- Nothing matched, or the search itself failed.  Either way the engine
-    -- left the listing alone and the player is still on the search screen, so
-    -- the rows they had are put back -- widening the list behind an error
-    -- message would throw away the result set they are still standing in.
-    if not ok or self.searchMessage then
-      self.rows, self.index, self.scroll = rows, index, scroll
-    end
-    if not ok then error(err, 0) end
-  end
+  -- Retired here: the cart's two type wheels only ever expressed what
+  -- src/gen2dexsearch.lua's free-text field now says in passing --
+  -- fire+flying is what TYPE1/TYPE2 meant, and every other term (a name, a
+  -- move, an ability) is something the wheels could not reach at all.  That
+  -- file installs its own updateSearch/drawSearch/beginSearch and is wired
+  -- in from main.lua; this file's part is just the hand-off below, at the
+  -- exact point the cart's own update() has already decided the view is
+  -- "search".
 
   -- ------- alternate forms
   --
@@ -1447,6 +1351,25 @@ function M.install(generation, buildFormList, resolveArt, scroll, mod,
     -- for every species, so the reset has to be explicit.
     if self.view == "entry" and wasView ~= "entry" then
       self.formBase, self.formList, self.formIndex, self.formId = nil, nil, 1, nil
+    end
+    -- START just opened the search screen.  gen2dexsearch.lua's own
+    -- beginSearch (once main.lua has wired it in) builds the free-text
+    -- screen's rows and vocabulary from the LIVE listing, and it has to run
+    -- exactly once here rather than inside updateSearch itself -- every frame
+    -- the screen stayed open would rebuild the listing behind the query the
+    -- player is mid-typing.  Gated on the class-level marker gen2dexsearch.lua
+    -- sets once it has actually taken over beginSearch: if it never installed
+    -- (a mod file missing, or main.lua not wired yet -- see Task 11) this
+    -- stays silent and the cart's own SEARCH screen behaves exactly as it did
+    -- before this file ever patched it.
+    if self.view == "search" and wasView ~= "search"
+        and self.nationalDexSearchInstalled
+        and type(self.beginSearch) == "function" then
+      if not pcall(self.beginSearch, self) and mod and mod.log then
+        mod.log:info("Gold's #DEX search screen failed to open -- the "
+          .. "listing is unchanged and the screen stays on the cart's own "
+          .. "SEARCH view")
+      end
     end
     -- After the engine's own pass, and only while the entry screen is still
     -- the live view -- so a press that closed the page cannot also move a

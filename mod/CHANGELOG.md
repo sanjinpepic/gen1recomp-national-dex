@@ -3,6 +3,128 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.24.0
+
+### Changed
+
+- **One key opens the search in both games: START, which is Escape on a
+  keyboard.** Gold's #DEX has always opened its own search with START, and Gen
+  1's opened with SELECT, so the same feature answered to Escape in one game
+  and Tab in the other depending on which had booted. Gen 1's listing now
+  reads START for the search, and its NUM / A-Z / SEEN view modes moved to
+  SELECT -- the tag on the title row names the new key. START closes the
+  screen as well as opening it, which is what Gold's cartridge already did.
+- Inside the search, SELECT still swaps a term that could be read two ways --
+  typing `fly` finds Flygon by name, and SELECT re-reads it as the move. The
+  listing and the search are different screens, so the key means one thing on
+  each without either having to give way.
+- The swap has a second benefit worth naming: nothing binds the listing's
+  `onSelectKey` any more. That is the field `useful_dex` uses for its own view
+  cycling, so the search now works alongside it whatever else is installed --
+  only the view modes stand down. A convenience going quiet next to a
+  neighbour is a fair trade; a search that could not be opened would not have
+  been.
+
+## 0.23.0
+
+### Changed
+
+- **Gold's search takes a keyboard directly, the way Gen 1's already did.**
+  Typing into it used to walk the cursor around the menu instead of entering
+  text, leaving the on-screen keyboard as the only way to search on a machine
+  that has a real one. The two games reach the keyboard by different roads:
+  Gen 1 runs on `Game`, whose `keypressed` offers the open screen first
+  refusal before anything becomes a button, while Gold runs on `Game2`, whose
+  own does not -- it checks the host hotkeys and goes straight to the button
+  map, so a letter arrived as a d-pad press because W, A, S and D are the
+  d-pad. Gold's dex now gives an open screen that same first refusal. Only a
+  screen that asks for raw keys is affected, and only while it is asking;
+  every other key reaches the button map exactly as before. A key is either
+  text or handed back, never both, which is what keeps DOWN, A and B working
+  while the field has focus.
+
+## 0.22.3
+
+### Fixed
+
+- **Gold's search only covered the first 151 species.** The listing behind it
+  held all 1025, but the search described a Kanto-sized dex and quietly found
+  nothing past #151. The length has two homes and the search read the wrong
+  one: `src/nationaldex.lua` patches the `dexSize` constant, and on a Gen 2
+  boot the constants registry is routed to `gen2Constants`, so the value lands
+  at `data.gen2Constants.dexSize` while `data.constants.dexSize` is never
+  written at all. The lookup missed, a literal 151 answered in its place, and
+  no error was raised. This mod's own notes had already recorded that the
+  patch "succeeds and means nothing" because nothing read it back -- the
+  search is the thing that now reads it.
+
+## 0.22.2
+
+### Fixed
+
+- **The search returned species the player had never seen.** A row with no
+  record prints as five dashes, and this mod's own listing already refuses to
+  sort those by name because doing so leaks, in position, exactly what the
+  dashes withhold -- but the search matched them anyway, so typing `chari`
+  confirmed that something beginning with those letters sat at #006, and
+  typing `fire` counted the Fire types. Searching now reaches recorded species
+  only, which is also what the screen it replaced did: Gold's cartridge search
+  reads seen species alone. An empty field still lists everything, dashes
+  included, because that is the listing standing still rather than a search.
+- The empty field prints NAME OR TYPE rather than nothing. A blank row beside
+  a cursor was the one element on the screen that gave no sign of being a text
+  field at all. The prompt shows only while the field is genuinely empty, so
+  it cannot be mistaken for something already typed.
+
+## 0.22.1
+
+### Fixed
+
+- **Gold's search keyboard could not be closed.** Pressing A on the field
+  opened the naming screen and END never dismissed it, stranding the player
+  with no way back to the dex. The two games' naming screens disagree about
+  who owns the stack: Gen 1's pops itself and then calls back, while Gold's
+  `accept` only invokes the callback and never touches the stack, so a caller
+  written against Gen 1's contract leaves the keyboard up for ever. The search
+  now pops it the way Gold's own name-entry screens do.
+- **The search opened on what looked like a broken screen.** With nothing yet
+  typed the field was blank, the reading row empty and the result list empty,
+  so all a player met was a cursor and the number 0 -- indistinguishable from a
+  search that had run and found nothing. An empty query now matches every row,
+  so the screen opens on the listing and typing narrows it, which is both what
+  a search is and the only state that explains itself.
+- Both search screens print a key legend. The screen they replaced named its
+  own controls and this one named none, so nothing on it indicated that A
+  opened a keyboard or that B left. SELECT is named only while a term actually
+  has a second reading, since naming a key that does nothing invites a press
+  that changes nothing.
+
+## 0.22.0
+
+### Added
+
+- **A free-text search for both dex listings.** SELECT on Gen 1's dex list
+  and START on Gold's now open a field that filters the 1025-row listing
+  live as it is typed, against name, type, ability and move. `fire/flying`
+  finds species holding both types, `earthquake` finds what learns it,
+  `levitate` finds what has it, and `chari` finds Charizard before the name
+  is finished. Terms split on `+`, `,` or `/` -- all three, because neither
+  game's naming keyboard carries a `+`, and a pad player reaches the field
+  through that same keyboard. Ability and move terms are answered by a
+  reverse index generated at build time, and a form's abilities and moves
+  fold into its base species, so `tough claws` finds Charizard rather than
+  only Mega Charizard X.
+- A word that means two things is read one way and says so on the row under
+  the field; SELECT swaps it to the other reading. `psychic` is both a type
+  and a move, and the field has to pick one to filter on -- naming the guess
+  it made beats filtering on it silently.
+
+### Changed
+
+- Gold's cartridge type-wheel search is retired. Its two wheels only ever
+  expressed what a query like `fire/flying` now says in passing, and one
+  field reachable from the same list replaces both.
+
 ## 0.21.0
 
 ### Added

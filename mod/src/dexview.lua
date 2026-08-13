@@ -1,6 +1,7 @@
 -- View modes for the Gen 1 Pokédex LISTING: the engine's own numerical order,
--- alphabetical, and the species this save has actually recorded.  START cycles
--- them and the mode is named on the title row beside POKéDEX.
+-- alphabetical, and the species this save has actually recorded.  SELECT
+-- cycles them and the mode is named on the title row beside POKéDEX.  START
+-- opens the search (src/dexsearchview.lua).
 --
 -- With the national dex on, that screen is 1025 rows ordered by a number a
 -- player mostly does not know.  Every other way into a species is by NAME --
@@ -9,18 +10,23 @@
 --
 -- WHICH KEY.  The engine's list reads UP, DOWN, LEFT, RIGHT, A and B, plus
 -- SELECT only when someone has set `onSelectKey` on it, which
--- src/ui/PokedexMenu.lua does not (src/ui/ListMenu.lua:137-179).  SELECT and
--- START are therefore both free, and this takes START on purpose:
+-- src/ui/PokedexMenu.lua does not (src/ui/ListMenu.lua:137-179), so SELECT and
+-- START are both free here.
 --
---   * SELECT is where a dex MOD puts this.  useful_dex 1.3.0 binds it on this
---     very list to cycle its own num/alpha/caught, and Gold's own #DEX opens
---     its OPTION screen with it (src/ui/gen2/PokedexMenu.lua:361-366).  Taking
---     it would either clobber that neighbour's feature or force a detect-and-
---     stand-down whose result is that the key which works depends on what else
---     the player has installed.
---   * START is read nowhere on this screen -- not by the engine's list, not by
---     the neighbour -- so it is the same key with or without one, and no mod
---     has to lose anything for this to work.
+-- The modes originally took START and the SEARCH took SELECT.  They swapped,
+-- because the search is the feature that has to answer to ONE key across both
+-- games: Gold's #DEX opens its own search with START
+-- (src/ui/gen2/PokedexMenu.lua:383) and cannot be moved off it without losing
+-- the cart's OPTION key, and on a desktop keyboard START is Escape while
+-- SELECT is Tab -- so leaving Gen 1 on SELECT meant the same feature opening
+-- with a different key depending on which game had booted.
+--
+-- The swap costs these modes the safer key and is still the right way round.
+-- useful_dex 1.3.0 binds onSelectKey on this very list, so SELECT is the
+-- contested one -- and a view mode that goes quiet next to a neighbour is a
+-- convenience lost, while a search that did the same would be a feature simply
+-- absent for those players.  Nothing binds START on this screen, so the search
+-- works whatever else is installed.
 --
 -- The one thing that cannot be shared is WHO OWNS THE ROW ORDER.  A neighbour
 -- that binds SELECT on this list is switching views of its own, and two owners
@@ -56,7 +62,7 @@ M.MODES = { "num", "alpha", "seen" }
 -- arrived somewhere by accident also needs to know what gets them back, and
 -- the title row has room for both: POKéDEX ends at cell 7 and the longest of
 -- these ends at cell 18 of 20.
-M.TAG = { num = "START NUM", alpha = "START A-Z", seen = "START SEEN" }
+M.TAG = { num = "SELECT NUM", alpha = "SELECT A-Z", seen = "SELECT SEEN" }
 
 -- The key a row sorts by.  Uppercased because the two halves of this list are
 -- typed differently -- the cart's own 151 are "PIKACHU" and every species this
@@ -222,10 +228,26 @@ end
 -- below are the ones in src/ui/PokedexMenu.lua:16-26, so the answer lines up
 -- row for row -- and when it does not, that mismatch is the guard that stops
 -- this reordering a list it does not understand.
-local function describe(game)
+function M.describe(game)
   local constants = type(game.data.constants) == "table"
     and game.data.constants or {}
-  local size = type(constants.dexSize) == "number" and constants.dexSize or 151
+  -- BOTH homes of dexSize, because this function now answers for both games
+  -- and the mod's own patch lands in a different one on each.
+  -- src/nationaldex.lua calls mod.content.constants:patch("dexSize", ...);
+  -- src/mods/Schemas.lua:485 routes the constants registry to `gen2Constants`
+  -- on a Gen 2 boot, so on Gold the value is at data.gen2Constants.dexSize and
+  -- data.constants.dexSize is never written at all.
+  --
+  -- Reading only Gen 1's home is why Gold's search covered 151 species: the
+  -- lookup missed, the literal fallback below answered, and the search quietly
+  -- described a Kanto-sized dex while the listing behind it held 1025 rows.
+  -- src/gen2dexlist.lua's header already recorded that the patch "succeeds and
+  -- means nothing" because nothing read it back -- this is the reader.
+  local gen2 = type(game.data.gen2Constants) == "table"
+    and game.data.gen2Constants or {}
+  local size = type(constants.dexSize) == "number" and constants.dexSize
+    or type(gen2.dexSize) == "number" and gen2.dexSize
+    or 151
   local byDex = {}
   for _, def in pairs(game.data.pokemon) do
     if type(def) == "table" and def.dex then byDex[def.dex] = def end
@@ -233,8 +255,22 @@ local function describe(game)
   local dex = type(game.save) == "table" and game.save.pokedex or nil
   local seen = type(dex) == "table" and type(dex.seen) == "table"
     and dex.seen or {}
+  -- BOTH spellings of the caught table, because this function now answers for
+  -- both games and they do not agree on the name: Gen 1 keeps `owned`
+  -- (src/ui/PokedexMenu.lua reads it), Gold keeps `caught`
+  -- (src/core/gen2/Save.lua:216 builds `pokedex = { seen = {}, caught = {} }`).
+  -- Reading only Gen 1's name left the caught half permanently empty on Gold.
+  --
+  -- That was survivable HERE and nowhere worth relying on: `known` is a
+  -- seen-or-caught test and nothing can be caught without first being seen, so
+  -- the rows came out right by luck rather than by reading the save. A caller
+  -- that ever needs caught on its own -- a "caught only" view, a completion
+  -- count -- would have got silence, so the missing name is fixed rather than
+  -- documented.
   local owned = type(dex) == "table" and type(dex.owned) == "table"
     and dex.owned or {}
+  local caught = type(dex) == "table" and type(dex.caught) == "table"
+    and dex.caught or {}
   local rows = {}
   for n = 1, size do
     local def = byDex[n]
@@ -242,12 +278,18 @@ local function describe(game)
       rows[#rows + 1] = {
         dex = n,
         name = type(def.name) == "string" and def.name or tostring(def.id),
-        known = (owned[def.id] or seen[def.id]) and true or false,
+        known = (owned[def.id] or caught[def.id] or seen[def.id])
+          and true or false,
+        -- Carried for the search, which filters on typing.  Read here rather
+        -- than by a second describer of its own: two functions reading these
+        -- same two tables is how two answers to one question drift apart.
+        types = type(def.types) == "table" and def.types or {},
       }
     end
   end
   return rows
 end
+local describe = M.describe
 
 local function augment(list, mod)
   local modules = requireAll()
@@ -353,6 +395,9 @@ local function augment(list, mod)
     -- already judged by the answer.
     if not checked then
       checked = true
+      -- Ours does not count: this mod's own search binds this field, and
+      -- treating that as a neighbour arriving would switch the view modes off
+      -- on the frame they were installed.
       if type(self.onSelectKey) == "function" then
         off = true
         report(mod, "another mod has bound SELECT on the Pokédex listing, "
@@ -367,10 +412,40 @@ local function augment(list, mod)
     if type(input) ~= "table" or type(input.wasPressed) ~= "function" then
       return
     end
-    if input:wasPressed("start") then
-      -- Availability is asked for at the press rather than kept, because the
-      -- answer builds the views themselves and a dex opened and closed without
-      -- ever pressing START should never have paid to sort 1025 rows.
+    -- START opens the SEARCH, and it is START in both games now.
+    --
+    -- Gold's #DEX opens its search with START (its own cart does:
+    -- game/src/ui/gen2/PokedexMenu.lua:383), and on a desktop keyboard START
+    -- is Escape while SELECT is Tab (game/src/core/Input.lua) -- so leaving
+    -- Gen 1 on SELECT meant one feature answering to two different keys
+    -- depending on which game was booted.  The view modes moved to SELECT to
+    -- free this one; see the onSelectKey install below.
+    --
+    -- The swap also takes the search out of the neighbour fight entirely.
+    -- useful_dex 1.3.0 binds onSelectKey and nothing binds START on this
+    -- screen, so the search now works whatever else is installed, and only the
+    -- view modes stand down.  That is the right way round: the modes are a
+    -- convenience, and a search a player cannot open is a feature that is
+    -- simply absent.
+    if input:wasPressed("start") and M.openSearch then
+      M.openSearch(self, rows, mod)
+    end
+
+    -- SELECT cycles the view modes, read HERE rather than through the list's
+    -- own onSelectKey hook.  That hook fires inside ListMenu's update
+    -- (src/ui/ListMenu.lua:165), so switching from it reorders the item array
+    -- half way through the engine's own input pass and the cursor and scroll
+    -- it syncs afterwards no longer describe the list underneath them.  Read
+    -- after originalUpdate, the switch lands on a settled list.
+    --
+    -- A neighbour that owns onSelectKey is still respected: the check above
+    -- sets `off` on the first frame and this whole block stops running, so
+    -- SELECT never changes hands twice on one press.
+    --
+    -- Availability is asked for at the press rather than kept, because the
+    -- answer builds the views themselves and a dex opened and closed without
+    -- ever pressing SELECT should never have paid to sort 1025 rows.
+    if input:wasPressed("select") then
       local wanted = M.nextMode(mode, {
         num = true,
         alpha = #viewFor("alpha") > 0,
@@ -398,7 +473,64 @@ local function augment(list, mod)
     end)
   end
 
+  -- SELECT opens the search.  Marked, so the neighbour check above knows this
+  -- handler is this mod's and does not switch the view modes off against it.
+  --
+  -- Only when nobody else holds the key: useful_dex 1.3.0 binds SELECT on
+  -- this very list, and a mod that got here first keeps it.  Said out loud
+  -- rather than silently, because a feature that is simply absent on some
+  -- installs is the kind of thing this project has paid days for.
   return true
+end
+
+-- Open a species' entry page from a search result.
+--
+-- Through the LISTING's own item rather than through a second route into the
+-- entry screen: the item the constructor built already carries whatever a
+-- neighbour decorated it with, and a second way in is a second thing to keep
+-- in step with the first.
+--
+-- A built item ({ label, ball, value } -- src/ui/PokedexMenu.lua) carries no
+-- dex NUMBER of its own: `value` is the species id when the row is seen or
+-- owned and nil otherwise, which cannot be compared against a row's name --
+-- a beyond-151 species registers as id "CHIKORITA" but displays as "Chikorita"
+-- (dev/national_dex_mod/data/species/generated/national.lua), so id and name
+-- disagree in case for exactly the species this search exists to find.  The
+-- label, though, is built as ("%0Nd %s"):format(n, ...) for every row
+-- regardless of seen state (PokedexMenu.lua's numFmt), so the dex number at
+-- its head is the one thing every item is guaranteed to carry.  And "open
+-- this entry" is `onChoose` -- the callback A already drives (ListMenu.lua)
+-- -- opening the same DATA/CRY/AREA menu a manual selection would, rather
+-- than a shortcut into DexEntryMenu that only this path takes.
+--
+-- `mod` is optional and only ever used to report the miss below: every other
+-- early return here is a shape guard (not a list, no items, no dex number to
+-- look for) rather than something a player did, but a dex number no item's
+-- label carries is a real outcome -- a neighbour relabelled the rows -- and
+-- rule 6 is that a guard which refuses to do something says so out loud, so
+-- this is the one path that reports.
+function M.openEntry(list, row, mod)
+  if type(list) ~= "table" or type(row) ~= "table" then return false end
+  local items = type(list.items) == "table" and list.items or nil
+  if not items then return false end
+  local dex = M.dexOf(row)
+  if dex == 0 then return false end
+  for index, item in ipairs(items) do
+    local label = type(item) == "table" and item.label or nil
+    local number = type(label) == "string" and tonumber(label:match("^(%d+)"))
+      or nil
+    if number == dex then
+      list.index = index
+      list.scroll = M.scrollFor(index, 1, #items, list.rows or 7)
+      if type(list.onChoose) == "function" then list.onChoose(item, list) end
+      return true
+    end
+  end
+  report(mod, ("a search result picked dex #%d, but no item on the listing "
+    .. "carries that number in its label -- another mod has relabelled the "
+    .. "rows, so the entry does not open rather than guessing at the wrong "
+    .. "one"):format(dex))
+  return false
 end
 
 -- Adds the view modes to one built listing, or answers false having said why.
