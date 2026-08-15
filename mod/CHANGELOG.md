@@ -3,6 +3,28 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.25.0
+
+### Added
+
+- **Arceus and Silvally now carry their seventeen type forms, browsable from
+  their dex entries like every other form.** They were the two species this
+  mod knew only one shape of, because they are the two the data source
+  describes without giving any form a record of its own: Charizard's megas
+  each arrive as their own stat line and ability list, while Arceus's Plates
+  and Silvally's Memories arrive as eighteen names over a single stat block.
+  There was nothing for the build tool to read, so it read nothing and
+  emitted nothing. Each form is derived from its base species instead --
+  which is the only reading the source allows, since the type is the whole
+  of the difference it records -- and registers under `ARCEUS_FIRE`,
+  `SILVALLY_DRAGON` and their fifteen siblings apiece, sharing the base's
+  stats, moves, size and dex text. The Normal form is deliberately absent:
+  that is the Pokémon holding nothing, and the base record already is it.
+  Dark, Steel and Fairy among them exist only while a type chart carrying
+  those three is registered, which this mod does whenever the national dex
+  is on. Battle art is looked up by the form's type name, so any set that
+  files a picture under that name is found without further wiring.
+
 ## 0.24.3
 
 ### Fixed
