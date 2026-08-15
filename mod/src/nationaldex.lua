@@ -71,6 +71,120 @@ local function anchorArt(mod, record)
   end
 end
 
+-- Two measurements the generated payload spells in its own dialect rather
+-- than the engine's.  Both reach a screen only for a species the player OWNS
+-- -- the entry page prints neither for one merely seen -- which is how they
+-- survived this long.
+--
+-- `heightM` is read by that page as "this record measures in metres", and it
+-- answers with the German GR./GEW. rows and a decimal comma
+-- (src/ui/DexEntryMenu.lua:107-113).  There is no seam meaning "metric" in
+-- any other language, and nothing in the engine's own import sets the field
+-- at all, so every species this mod adds gave its size in German beside 151
+-- Kanto species giving feet and pounds.  The metric pair is dropped rather
+-- than translated: the imperial pair beside it is the same measurement and is
+-- the one the page is built to print.
+--
+-- `weight` is TENTHS of a pound to the engine -- Snorlax is 10140 and the
+-- page divides by ten before drawing it -- while the payload carries whole
+-- pounds, so every species this mod adds weighed a tenth of what it should.
+-- Folded here so one unit holds across both games; Gold's entry screen reads
+-- the same field (src/gen2dexlist.lua weightWord).
+local METRIC_KEYS = { "heightM", "weightKg" }
+
+local function normaliseMeasures(record)
+  local entry = record.dexEntry
+  if type(entry) ~= "table" then return end
+  for _, key in ipairs(METRIC_KEYS) do entry[key] = nil end
+  if type(entry.weight) == "number" then
+    entry.weight = math.floor(entry.weight * 10 + 0.5)
+  end
+end
+
+-- One UTF-8 character.  The payload spells Pokémon and Flabébé with a real
+-- é, and a budget counted in bytes would break those lines a glyph early.
+local GLYPH = "[\1-\127\194-\244][\128-\191]*"
+
+local function glyphs(text)
+  local count = 0
+  for _ in text:gmatch(GLYPH) do count = count + 1 end
+  return count
+end
+
+local function firstGlyphs(text, count)
+  if count < 1 then return "" end
+  local kept, taken = {}, 0
+  for glyph in text:gmatch(GLYPH) do
+    taken = taken + 1
+    if taken > count then break end
+    kept[taken] = glyph
+  end
+  return table.concat(kept)
+end
+
+-- The entry page draws a description one screen row per line break and wraps
+-- nothing at all (src/ui/DexEntryMenu.lua:115-122): the cart's own entries
+-- arrive already broken, so that loop is a printer and not a formatter.  This
+-- mod's prose arrives as one flowing sentence -- tools/build_national_dex.py
+-- collapses the source's own breaks, which were measured for a different
+-- screen -- and so was drawn as a single line starting at the left margin and
+-- running off the right edge, with about a fifth of it on the screen.  That
+-- is only visible for a species the player OWNS, because the page prints no
+-- description at all for one merely seen.
+--
+-- Broken here, at registration, rather than in the generated data, for the
+-- reason the display casing is: this page belongs to the engine and neither
+-- this mod nor any other patches it, so the data it is handed is the only
+-- place a fix can live.
+--
+-- 19 glyphs is what the row physically holds -- the text starts at x=8 on a
+-- 160px screen, so the nineteenth ends exactly at the right edge -- and 7 is
+-- the rows the page has (y starts at 72, steps 10, and stops once it passes
+-- 132).  The cart's own entries never exceed 18 because they were written to
+-- fit, which is not the same as 19 not fitting: taking the last column back
+-- carries 75 more of the 1025 entries inside the page.
+--
+-- Prose that needs more than that ends in the font's own ellipsis, so a cut
+-- reads as a cut rather than as a sentence that simply stops.
+local ENTRY_COLS, ENTRY_ROWS = 19, 7
+local ELLIPSIS = "…"
+
+local function wrapEntry(text)
+  if type(text) ~= "string" then return text end
+  local lines, current = {}, ""
+  local function flush()
+    if current ~= "" then lines[#lines + 1] = current end
+    current = ""
+  end
+  for word in text:gmatch("%S+") do
+    -- A word wider than the box is cut rather than left to overhang.  Dex
+    -- prose has none today; a payload rebuilt against a newer source might.
+    while glyphs(word) > ENTRY_COLS do
+      local head = firstGlyphs(word, ENTRY_COLS)
+      flush()
+      lines[#lines + 1] = head
+      word = word:sub(#head + 1)
+    end
+    local candidate = current == "" and word or (current .. " " .. word)
+    if glyphs(candidate) <= ENTRY_COLS then
+      current = candidate
+    else
+      flush()
+      current = word
+    end
+  end
+  flush()
+  if #lines > ENTRY_ROWS then
+    local last = lines[ENTRY_ROWS]
+    if glyphs(last) >= ENTRY_COLS then
+      last = firstGlyphs(last, ENTRY_COLS - 1)
+    end
+    lines[ENTRY_ROWS] = (last:gsub("%s+$", "")) .. ELLIPSIS
+    for index = #lines, ENTRY_ROWS + 1, -1 do lines[index] = nil end
+  end
+  return table.concat(lines, "\n")
+end
+
 return function(mod, chart, national, gen2shape, generation, era, display)
   local patched, registered, texts, skipped, charted = 0, 0, 0, 0, 0
   local firstError
@@ -125,7 +239,9 @@ return function(mod, chart, national, gen2shape, generation, era, display)
   if national then
     if type(national.text) == "table" then
       for id, value in pairs(national.text) do
-        if safe(function() mod.content.text:register(id, value) end) then
+        if safe(function()
+          mod.content.text:register(id, wrapEntry(value))
+        end) then
           texts = texts + 1
         end
       end
@@ -163,6 +279,7 @@ return function(mod, chart, national, gen2shape, generation, era, display)
           dexSize = record.dex
         end
         safe(function() anchorArt(mod, record) end)
+        safe(function() normaliseMeasures(record) end)
         -- The cart draws PIKACHU and this payload spells its own species
         -- "Chikorita", so without this the dex reads as two games spliced
         -- together from #152 up.  Cased here rather than in the generated

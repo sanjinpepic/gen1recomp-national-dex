@@ -120,7 +120,12 @@ end
 -- front of the point (204 draws as 2'04") and the weight word five with four
 -- in front (150 draws as 15.0 lb).  src/import/RomExtractorGen2.lua:4437-4442
 -- is where the cart's own values get that treatment; this mod's records carry
--- feet/inches and pounds separately, so they are folded the same way.
+-- feet and inches separately, so the height is folded the same way.
+--
+-- The weight arrives in the engine's own unit -- tenths of a pound, what a
+-- species record's dexEntry.weight has always meant and what
+-- src/nationaldex.lua now folds the payload's whole pounds into -- so it is
+-- already the digits this field wants and is only rounded.
 function M.heightWord(dexEntry)
   local d = type(dexEntry) == "table" and dexEntry or {}
   local feet = type(d.heightFt) == "number" and d.heightFt or 0
@@ -130,8 +135,8 @@ end
 
 function M.weightWord(dexEntry)
   local d = type(dexEntry) == "table" and dexEntry or {}
-  local pounds = type(d.weight) == "number" and d.weight or 0
-  return math.floor(pounds * 10 + 0.5)
+  local tenths = type(d.weight) == "number" and d.weight or 0
+  return math.floor(tenths + 0.5)
 end
 
 -- One synthetic row of data.gen2Pokedex.entries, in the shape the extractor

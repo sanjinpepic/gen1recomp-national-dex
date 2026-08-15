@@ -3,6 +3,31 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.24.3
+
+### Fixed
+
+- **A dex entry for a species this mod adds printed its description as one
+  line running off the right of the screen, and its height and weight in
+  German.** All three are printed only for a species the player OWNS -- a
+  seen-only entry says "Data unknown." and nothing else -- so the whole fault
+  was invisible until a national-dex species was caught. The entry page draws
+  a description one screen row per line break and wraps nothing, because the
+  cart's own 151 entries arrive already broken and this mod's prose did not;
+  it is broken now as each entry registers, to the nineteen columns the row
+  physically holds and the seven rows the page has, with the font's ellipsis
+  where a longer entry is cut. Nineteen rather than the eighteen of the
+  cart's own widest line: the text starts eight pixels in on a screen a
+  hundred and sixty wide, so the last column is there to be used, and using it
+  carries seventy-five more entries inside the page. The two numbers beside
+  it were unit
+  mismatches: `dexEntry.heightM` is how a record tells that page it measures
+  in metres, and the page answers with the German GR./GEW. labels and a
+  decimal comma, so the metric pair is no longer registered; and `weight` is
+  tenths of a pound to the engine while the payload carried whole pounds, so
+  every species this mod adds weighed a tenth of what it should -- Groudon
+  read 209.4 lb where it should read 2094.4.
+
 ## 0.24.1
 
 ### Fixed
