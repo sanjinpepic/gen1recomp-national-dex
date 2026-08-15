@@ -3,6 +3,25 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.24.1
+
+### Fixed
+
+- **Species and moves this mod adds print in capitals now, the way the cart
+  prints its own.** The generated payload spells a name the way its source
+  does -- `Chikorita`, `Aqua Jet` -- and the engine draws a record's `name`
+  straight onto the dex list, the entry page, the battle HUD and the FIGHT
+  menu, so everything from #152 up read as a different game to the 151 beside
+  it. The casing is applied as each record is registered rather than written
+  into the generated data, which is what makes it reach the screens this mod
+  never patches; the dex pages it does own case the move and family names they
+  read from their own shards at the point of drawing them. Only `a-z` moves:
+  Flabébé and Sirfetch'd keep their accents and their apostrophe, because the
+  ROM font has a lowercase é and no capital one, and a character the font
+  cannot draw is drawn as a blank rather than refused. A mod matching this
+  mod's records on `name` rather than `id` will need the new spelling -- the
+  read API reports what the registry holds.
+
 ## 0.24.0
 
 ### Changed

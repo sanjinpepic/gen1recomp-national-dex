@@ -71,7 +71,7 @@ local function anchorArt(mod, record)
   end
 end
 
-return function(mod, chart, national, gen2shape, generation, era)
+return function(mod, chart, national, gen2shape, generation, era, display)
   local patched, registered, texts, skipped, charted = 0, 0, 0, 0, 0
   local firstError
   -- On Gold the same registry validates a DIFFERENT record shape and the
@@ -163,6 +163,18 @@ return function(mod, chart, national, gen2shape, generation, era)
           dexSize = record.dex
         end
         safe(function() anchorArt(mod, record) end)
+        -- The cart draws PIKACHU and this payload spells its own species
+        -- "Chikorita", so without this the dex reads as two games spliced
+        -- together from #152 up.  Cased here rather than in the generated
+        -- data because the engine's OWN screens -- the dex list, the entry
+        -- page, the battle HUD, the party menu -- draw record.name directly
+        -- and this mod patches none of them; a fix applied only in the
+        -- screens it does patch would leave exactly those inconsistent.
+        -- src/displayname.lua carries what "uppercase" is allowed to mean
+        -- and why the accented names come out of it unchanged.
+        if display then
+          safe(function() record.name = display.upper(record.name) end)
+        end
         -- On Gold #152-251 arrive with the player's cart, before any mod
         -- runs, so this mod has nothing to register for them -- only modern
         -- typing to offer, the same deal the Kanto 151 get on both games.

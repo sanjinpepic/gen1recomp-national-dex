@@ -492,11 +492,10 @@ end
 --
 -- A built item ({ label, ball, value } -- src/ui/PokedexMenu.lua) carries no
 -- dex NUMBER of its own: `value` is the species id when the row is seen or
--- owned and nil otherwise, which cannot be compared against a row's name --
--- a beyond-151 species registers as id "CHIKORITA" but displays as "Chikorita"
--- (dev/national_dex_mod/data/species/generated/national.lua), so id and name
--- disagree in case for exactly the species this search exists to find.  The
--- label, though, is built as ("%0Nd %s"):format(n, ...) for every row
+-- owned and nil otherwise, and an id is not a name -- "NIDORAN_F" is the id
+-- of a species displayed as NIDORAN♀, and every alternate form's id is a
+-- spelling ("RATTATA_ALOLA") no listing ever prints.  The label, though, is
+-- built as ("%0Nd %s"):format(n, ...) for every row
 -- regardless of seen state (PokedexMenu.lua's numFmt), so the dex number at
 -- its head is the one thing every item is guaranteed to carry.  And "open
 -- this entry" is `onChoose` -- the callback A already drives (ListMenu.lua)

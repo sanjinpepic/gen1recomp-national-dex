@@ -12,6 +12,7 @@ return {
       "the Pokedex entry page gains pages on DOWN -- typing, ability and base stats, then every evolution branch and the complete modern movelist -- and form browsing on LEFT/RIGHT, each page following the selected form",
       "the party STATUS screen splits Special into Sp.Atk and Sp.Def when STATS: MODERN",
       "dexSize and dexDigits grow so the dex list can page past 151",
+      "every species and move this mod registers is cased to capitals on the way in, so an added row reads like the cart's own beside it",
     },
     added = {
       "species 1-1025 with dex entries, typing, base stats, learnsets and evolutions",
@@ -35,6 +36,8 @@ return {
       "the Gen 1 listing's view modes stand down when another mod has bound SELECT on that list, because that is where a dex mod puts its own view switching and two owners of one row order cannot both be right; Gold's #DEX has sort modes and a search of its own and is left alone entirely",
       "on Gold the Pokedex STATS page and the party summary box do not install at all -- those screens are different classes there and a Gen 2 equivalent is not written yet",
       "Gold's #1-251 keep the cart's base stats on purpose: on Gen 2 those are live battle numbers, so only the typing is patched over them",
+      "a mod matching these records on name rather than id needs the capitalised spelling; the read API reports whatever the registry holds, so it reports that too",
+      "Flabebe and Sirfetch'd keep their accents and their curly apostrophe uncased -- the ROM font has a lowercase e-acute and no capital one, and a glyph it lacks draws as a blank",
     },
   },
   credits = {

@@ -265,7 +265,7 @@ end
 -- test with plain tables -- the same shape src/gen2shape.lua and src/api.lua
 -- already use, and for the same reason.
 
-function M.install(mod, payload, generation, widen)
+function M.install(mod, payload, generation, widen, display)
   if type(payload) ~= "table" or type(payload.moves) ~= "table" then
     mod.log:error("the move payload is missing or malformed -- reinstall the "
       .. "mod zip; no modern move is registered this boot")
@@ -334,7 +334,16 @@ function M.install(mod, payload, generation, widen)
       -- into a widened learnset regardless of what this mod's own curation
       -- said about the PokeAPI description of it.
       allowed[id] = true
-    elseif safe(function() mod.content.moves:register(id, record) end) then
+    elseif safe(function()
+      -- The cart's own moves print THUNDERBOLT in the FIGHT menu and this
+      -- payload spells its moves "Aqua Jet", so an added move stands out
+      -- from the ones beside it in exactly the way an added species used to
+      -- stand out in the dex.  Only the records this branch REGISTERS are
+      -- cased: the branch above leaves a move the cart already owns
+      -- completely alone, and the cart already capitalises it.
+      if display then record.name = display.upper(record.name) end
+      mod.content.moves:register(id, record)
+    end) then
       registered = registered + 1
       if record.effectModeled == true then allowed[id] = true end
     end

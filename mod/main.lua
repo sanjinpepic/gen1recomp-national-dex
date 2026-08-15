@@ -83,6 +83,15 @@ return function(mod)
 
   local nationalDex = mod.options:get("national_dex") == "on"
 
+  -- src/displayname.lua cases a name the way the cart cases its own, and is
+  -- handed to the two registration paths below for the same reason
+  -- gen2shape is handed in: a mod's files load as chunks through mod:read,
+  -- not through package.path, so require() cannot see a sibling of this mod.
+  -- A load failure costs the casing and nothing else -- both callers treat a
+  -- missing module as "leave the name as the payload spelled it", which is
+  -- what every build before this one did.
+  local display = loadSibling(mod, "src/displayname.lua")
+
   -- src/gen2shape.lua answers which generation is booting and reshapes a
   -- record for it.  Handed in rather than required from nationaldex.lua
   -- because a mod's own files load as chunks through mod:read, not through
@@ -115,7 +124,7 @@ return function(mod)
     -- without the registration module there is nothing to run at all, and the
     -- cart's own species stay exactly as it supplied them.
     if register then
-      register(mod, chart, national, gen2shape, generation, era)
+      register(mod, chart, national, gen2shape, generation, era, display)
     end
   end
 
@@ -135,7 +144,8 @@ return function(mod)
   if movePayload then
     local Moves = loadSibling(mod, "src/moves.lua")
     if Moves then
-      Moves(mod, movePayload, generation, mod.options:get("moves") == "all")
+      Moves(mod, movePayload, generation, mod.options:get("moves") == "all",
+        display)
     end
   end
 

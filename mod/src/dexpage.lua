@@ -269,6 +269,23 @@ function M.fit(text, columns)
   return text:sub(1, columns)
 end
 
+-- Everything these pages print is capitals -- the TYPE rows, the section
+-- titles, the names M.abilityRows already cases -- so a title-cased move or
+-- a lowercase form slug lands in the middle of that as an obvious foreign
+-- body.  Applied here rather than in src/displayname.lua's registration path
+-- because these names never go NEAR the species registry: the movelist reads
+-- the API's own move shards and the evolution line reads the evolution
+-- shards, both of which keep the source's spelling on purpose so a consumer
+-- of mod.exports gets the canonical name rather than this screen's idea of
+-- it.  Same rule as that file states, and for its reasons: only a-z moves,
+-- so "é", "♀" and "’" reach the screen as the glyphs the font has for them
+-- instead of the space Font.encode substitutes for one it lacks.
+local function shown(text)
+  if type(text) ~= "string" then return "" end
+  return (text:gsub("[a-z]", string.upper))
+end
+M.shown = shown
+
 -- What the level column prints for one level-up row.
 --
 -- PokeAPI records a move a species gets the MOMENT it evolves as level 0 --
@@ -318,7 +335,7 @@ function M.levelUpSection(shaped)
     if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
       local level = M.levelText(entry.level)
       rows[#rows + 1] = {
-        text = M.fit(entry.name, M.COLUMNS - #level), x = M.LEFT,
+        text = M.fit(shown(entry.name), M.COLUMNS - #level), x = M.LEFT,
         right = level, rightLabel = tonumber(level) == nil,
       }
     end
@@ -341,7 +358,8 @@ function M.moveSections(shaped)
     local rows = {}
     for _, entry in ipairs(list) do
       if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
-        rows[#rows + 1] = { text = M.fit(entry.name, M.COLUMNS), x = M.LEFT }
+        rows[#rows + 1] = { text = M.fit(shown(entry.name), M.COLUMNS),
+                            x = M.LEFT }
       end
     end
     if #rows > 0 then out[#out + 1] = { title = section.title, rows = rows } end
@@ -614,8 +632,8 @@ function M.evolutionLine(evo, lookup)
     if visited[id] then return end
     visited[id] = true
     local record = records[id]
-    local name = type(record) == "table" and type(record.name) == "string"
-      and record.name ~= "" and record.name or names[id] or id
+    local name = shown(type(record) == "table" and type(record.name) == "string"
+      and record.name ~= "" and record.name or names[id] or id)
     local trigger, word = M.triggerText(stepInto[id])
     nodes[#nodes + 1] = { id = id, name = name, depth = depth,
                           current = id == selfId or nil,
