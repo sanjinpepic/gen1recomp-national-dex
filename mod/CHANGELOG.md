@@ -3,6 +3,21 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.26.0
+
+### Added
+
+- **Genesect's four Drives -- Douse, Shock, Burn and Chill -- are now browsable
+  forms of their own.** They were the one alternate-form family this mod had
+  no record for at all, Arceus and Silvally's payload-less shape but with a
+  twist: fetching the live pokemon-form resource for each Drive shows nothing
+  different from base Genesect, not even typing (in the games a Drive changes
+  the type of Techno Blast only, a per-move property no dex record can hold).
+  So each is derived from Genesect's own record with only its name, dex
+  number and form label overridden -- stats, typing, abilities and moveset
+  all stay the base's -- registering as `GENESECT_DOUSE`, `GENESECT_SHOCK`,
+  `GENESECT_BURN` and `GENESECT_CHILL`.
+
 ## 0.25.0
 
 ### Added
