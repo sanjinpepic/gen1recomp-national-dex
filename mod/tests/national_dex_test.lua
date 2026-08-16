@@ -1,7 +1,5 @@
--- Standalone: luajit mods/national_dex/tests/national_dex_test.lua
---
--- Run from the root of a gen1recomp checkout with this mod installed (or
--- symlinked) at mods/national_dex.
+-- Standalone: luajit ../dev/national_dex_mod/tests/national_dex_test.lua
+-- run with cwd at the root of a gen1recomp checkout (game/).
 --
 -- What this suite is for is the dex the mod REGISTERS, not the fact that it
 -- loaded.  NATIONAL DEX defaults to OFF, and with it off the mod loads
@@ -9,15 +7,21 @@
 -- #run.errors would pass just as green against an empty registry.  The
 -- injected options.lua below is what stops every assertion here from being
 -- vacuous.
+--
+-- The mod is not physically present under the checkout's mods/, so
+-- "mods/national_dex" is rewritten to this file's own location the same way
+-- national_dex_defaults_test.lua does -- MOD, derived from arg[0],
+-- self-locates regardless of cwd tricks.  Without this the bare fs below
+-- resolves "mods/national_dex" to nothing, run.mod comes back nil, and
+-- every assertion after the first line was actually checking an empty
+-- loader.mods table rather than a real boot.
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
 local T = require("tests.modkit")
 local FsIo = require("tests.fs_io")
+local MOD = arg[0]:gsub("[/\\]tests[/\\][^/\\]+$", "")
 local Data = require("src.core.Data")
 Data:load()
-
-local ID = "national_dex"
-local PATH = "mods/" .. ID
 
 -- `mods` is non-empty on purpose: the loader reads an empty table as a first
 -- run and disables every mod it discovers, which would skip this one.
@@ -32,26 +36,36 @@ local OPTIONS = [[return {
 -- the checkout it is reading -- the loader persists enable state on load.
 local function optionsFs()
   local inner = FsIo.new(".")
+  local function map(path)
+    if path == nil then return path end
+    local prefix = "mods/national_dex"
+    if path == prefix then return MOD end
+    if path:sub(1, #prefix + 1) == prefix .. "/" then
+      return MOD .. path:sub(#prefix + 1)
+    end
+    return path
+  end
   local fs = { root = inner.root }
 
   function fs.read(path)
     if path == "options.lua" then return OPTIONS end
-    return inner.read(path)
+    return inner.read(map(path))
   end
 
   function fs.load(path)
     if path == "options.lua" then return load(OPTIONS, "@options.lua") end
-    return inner.load(path)
+    return inner.load(map(path))
   end
 
   function fs.getInfo(path)
     if path == "options.lua" then return { type = "file" } end
-    return inner.getInfo(path)
+    if path == "mods" then return { type = "directory" } end
+    return inner.getInfo(map(path))
   end
 
   function fs.getDirectoryItems(path)
-    if path == "mods" then return { ID } end
-    return inner.getDirectoryItems(path)
+    if path == "mods" then return { "national_dex" } end
+    return inner.getDirectoryItems(map(path))
   end
 
   function fs.write() return true end
@@ -59,10 +73,11 @@ local function optionsFs()
   return fs
 end
 
-local run = T.sdk.loadMod(PATH, { data = Data, fs = optionsFs() })
+local run = T.sdk.loadMods({ "national_dex" }, { data = Data, fs = optionsFs() })
+run.mod = run.mods.national_dex
 T.eq(#run.errors, 0, "loads clean (" .. tostring(run.errors[1]) .. ")")
 
-local exports = run.loader.exports[ID]
+local exports = run.loader.exports.national_dex
 T.check(type(exports) == "table", "the mod published its exports")
 T.check((exports.apiVersion or 0) >= 1, "apiVersion is the integer consumers gate on")
 for _, name in ipairs({ "statsByDex", "statsBySpecies", "listSpecies",

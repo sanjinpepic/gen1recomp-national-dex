@@ -44,11 +44,41 @@ local M = {}
 -- Anything unexpected falls back to 1, the shape the generated data is
 -- already in, so a boot this cannot read behaves exactly as every release
 -- before Gold support did rather than reshaping records on a guess.
+--
+-- That primary read has one confirmed gap, and it is not on a real Gold
+-- boot -- Game2.lua stamps data.gen2Constants (generation included) before
+-- mods:load runs, every time.  It is tools/save-editor/App.lua, which loads
+-- mods against Gold's cart through a SEPARATE bootstrap
+-- (Gen.bindGoldData) that binds gen2Maps/gen2Tilesets/gen2Palettes and a
+-- handful of others but never gen2Constants.  The loader itself still
+-- knows it is Gen 2 there -- GameVersion.current was set before Data:load
+-- ran, so mod.content.pokemon's own registry is already validating against
+-- the Gen 2 schema -- but this function had nothing to read, fell back to
+-- 1, and every registration below was then a Gen 1-shaped record failing
+-- that Gen 2 schema: silently, because every registration is safe()-guarded
+-- and the resulting warning goes out through mod.log, which reaches a
+-- print() the packaged launcher discards.  Wholesale, because every one of
+-- the ~1140 registrations hit the identical missing-specialAttack failure.
+--
+-- A ROM-owned species is present and untouched at the point this function
+-- runs (before this mod registers anything), so its own shape is a second,
+-- independent signal that survives the editor's gap.  Gold's cart splits
+-- baseStats into specialAttack/specialDefense; Red's collapses them into
+-- one `special`.  BULBASAUR (dex 1) exists on every supported cart.
+local function probeSpecialSplit(mod)
+  local ok, record = pcall(function()
+    return mod.content.pokemon:get("BULBASAUR")
+  end)
+  return ok and type(record) == "table" and type(record.baseStats) == "table"
+    and type(record.baseStats.specialAttack) == "number"
+end
+
 function M.generation(mod)
   local ok, value = pcall(function()
     return mod.content.constants:get("generation")
   end)
   if ok and type(value) == "number" then return value end
+  if probeSpecialSplit(mod) then return 2 end
   return 1
 end
 

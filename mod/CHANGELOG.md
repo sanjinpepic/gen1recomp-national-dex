@@ -3,6 +3,35 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.27.1
+
+### Fixed
+
+- **Every species this mod adds past #251 was invisible to Pokemon Gold's
+  save editor -- not merely absent from its species picker, but never
+  reaching `data.pokemon` at all under that boot.** `src/gen2shape.lua`'s
+  generation read, `mod.content.constants:get("generation")`, answers
+  correctly on a real Gold boot -- `Game2.lua` stamps `data.gen2Constants`
+  before any mod loads -- but the save editor's own bootstrap
+  (`tools/save-editor/Gen.lua`'s `bindGoldData`) never binds that table; it
+  binds `gen2Maps`, `gen2Tilesets`, `gen2Palettes` and a few others, but not
+  this one, so the read came back nil there and `gen2shape.generation()`
+  fell back to Gen 1. The pokemon registry itself was still built against
+  the Gen 2 schema the whole time -- the loader's own generation was
+  correct -- so every one of the roughly 1,140 registrations this mod
+  attempted arrived Gen 1-shaped against a schema requiring
+  `specialAttack`/`specialDefense`, and every one was rejected. Nothing
+  crashed and nothing warned visibly: each registration is guarded
+  individually so one bad record can never fail the load, and the tally
+  line naming the failure goes out through `mod.log`, which reaches a
+  `print()` the packaged launcher discards. `gen2shape.lua` now has a
+  second signal for when the first comes back empty -- whether an existing,
+  ROM-owned species (Bulbasaur) already carries the Gen 2 stat split, which
+  survives the editor's gap because Gold's own cart is Gen 2-shaped no
+  matter which tables its bootstrap happened to bind. Items and moves were
+  never affected, since neither of those registries' schemas differ between
+  generations.
+
 ## 0.27.0
 
 ### Added
