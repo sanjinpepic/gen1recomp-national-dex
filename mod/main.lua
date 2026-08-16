@@ -128,6 +128,38 @@ return function(mod)
     end
   end
 
+  -- The three modern types (DARK/STEEL/FAIRY) a modern move's own `type`
+  -- field can name.  src/moves.lua registers the full modern roster
+  -- UNCONDITIONALLY -- see that file's own header: registration must never
+  -- depend on an option, or turning MOVES back off would delete an already-
+  -- learned move off a save -- but until now the only thing that ever taught
+  -- the engine those three type ids was the `chart`-gated block just above,
+  -- which is skipped on a totally untouched install (TYPE CHART stays at the
+  -- cart's own GEN 1 and NATIONAL DEX defaults OFF, so era == nativeEra and
+  -- nationalDex is false).  Every DARK/STEEL/FAIRY move in the roster -- over
+  -- a hundred of them -- registered a `type` no registry actually carried,
+  -- and Schemas.crossValidate turned each into a hard "unresolved reference
+  -- to type_chart" load error on every single boot, listed on every mod's
+  -- error page in the manager, not merely this one's.  The three records are
+  -- byte-identical across every era file (only the matchup ROWS differ), so
+  -- gen1's copy answers for all of them; `mod.content.type_chart:get(id)`
+  -- guards against double-registering whatever `chart` above already claimed.
+  local typeStubs = loadOptionalSibling(mod,
+    "data/species/generated/type_chart_gen1.lua")
+  if typeStubs and type(typeStubs.types) == "table" then
+    for id, record in pairs(typeStubs.types) do
+      if mod.content.type_chart:get(id) == nil then
+        local ok, err = pcall(function()
+          mod.content.type_chart:register(id, record)
+        end)
+        if not ok then
+          mod.log:warn("modern type stub %s failed to register (%s) -- any "
+            .. "move naming it will fail to resolve", id, tostring(err))
+        end
+      end
+    end
+  end
+
   -- The modern move roster (src/moves.lua).  Unconditional, and ordered
   -- AFTER the species registration above for one reason: widening a learnset
   -- means reading the species record back and patching it, so every record

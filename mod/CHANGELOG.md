@@ -3,6 +3,51 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.26.1
+
+### Fixed
+
+- **A totally untouched install produced 105 load errors on every single
+  boot.** `src/moves.lua` registers the full modern move roster
+  unconditionally, on purpose -- turning the MOVES option back off must never
+  delete an already-learned move off a save, so the ids always have to be
+  there. Over a hundred of those moves carry a `type` of DARK, STEEL or
+  FAIRY, and the only thing that ever taught the engine those three type ids
+  was the NATIONAL DEX/TYPE CHART-gated block those same moves never waited
+  for -- with both options left at their defaults (OFF and GEN 1), that block
+  never ran, so every DARK/STEEL/FAIRY move registered a `type` nothing had
+  registered, and `Schemas.crossValidate` turned each into a hard
+  "unresolved reference to type_chart" error, attributed to this mod, listed
+  on every mod's own error page in the manager. `main.lua` now registers
+  just the three bare type id records (never their matchup rows -- Gen 1
+  still decides every multiplier a player's battle actually rolls) whenever
+  the modern move roster registers, independently of whether NATIONAL DEX or
+  TYPE CHART changed anything else.
+
+### Added
+
+- **Two new test suites pin promises this mod's own code already made in
+  words but nothing had checked.** `national_dex_defaults_test.lua` boots
+  the real mod against the real engine data with nothing configured -- the
+  install a player gets who never opened the settings screen -- and demands
+  zero errors, which is the fix above's own regression guard.
+  `national_dex_effectmodeled_test.lua` boots it again with MOVES=ALL and
+  checks both directions of `src/api.lua`'s own stated policy: a move
+  flagged `effectModeled = false` must never reach a real learnset or tmhm
+  list, and a move flagged `true` ought to be reachable by one of those two
+  routes or explicitly written down as a known gap. Sixteen modern moves
+  (`BADDYBAD`, `FLOATYFALL`, `FREEZYFROST`, `GLITZYGLOW`, `GRASSYGLIDE`,
+  `HEALORDER`, `HEARTSTAMP`, `LASHOUT`, `METEORBEAM`, `MISTYEXPLOSION`,
+  `NEEDLEARM`, `POLTERGEIST`, `SCORCHINGSANDS`, `SPARKLYSWIRL`,
+  `SPLISHYSPLASH`, `STEAMROLLER`) turned up unreachable by either route in
+  the current data and are now named in the test as a documented gap rather
+  than a silent one: each is a move whose source shard carries no
+  version-group where any species learns it by level-up, and this mod has no
+  modern-TM or tutor/egg-move pipeline to reach it any other way. Not a
+  registration bug -- a real hole in what a fresh install can teach -- and
+  now it is one a future data rebuild cannot silently widen without the test
+  noticing.
+
 ## 0.26.0
 
 ### Added
