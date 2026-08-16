@@ -113,5 +113,21 @@ T.check(not sawMatchup,
     .. "bare type ids the move roster needs to resolve, never the full "
     .. "modern chart a player did not ask for")
 
+-- src/machinemoves.lua's byteless-TM pipeline is gated on the SAME MOVES=ALL
+-- flag as src/moves.lua's own learnset widening -- untouched defaults means
+-- MOVES=GEN-NATIVE, so this registers nothing at all, not even a dangling
+-- item nobody can use yet. GRASSYGLIDE (one of tools/build_moves.py's own
+-- six-move roster) stands in for the whole payload.
+T.check(Data.items.TM172 == nil,
+  "untouched defaults: the machine-TM pipeline registers no item at all")
+T.check(Data.pokemon.BULBASAUR == nil or Data.pokemon.BULBASAUR.tmhm == nil
+  or (function()
+    for _, id in ipairs(Data.pokemon.BULBASAUR.tmhm) do
+      if id == "GRASSYGLIDE" then return false end
+    end
+    return true
+  end)(),
+  "untouched defaults: and BULBASAUR's tmhm list never gains GRASSYGLIDE")
+
 run.release()
 T.finish("national_dex_defaults")

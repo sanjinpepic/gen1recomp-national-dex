@@ -3,6 +3,38 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.27.0
+
+### Added
+
+- **Six of the sixteen modern moves 0.26.1's own `national_dex_effectmodeled_test.lua`
+  found unreachable now have a route.** `tools/build_moves.py` builds a
+  general TM pipeline off PokeAPI's own `machine` learn-method bucket, which
+  this mod's `extras/` shards already carried for display but nothing ever
+  taught from: every `effectModeled = true` move with no level-up route and
+  at least one species PokeAPI actually lists as machine-taught gets an
+  invented item (TM172 onward, continuing past `battle_forms`'s TM171),
+  registered by the new `src/machinemoves.lua` and teaching the move through
+  the engine's real machine-item path (`game/src/inventory/ItemEffects.lua`)
+  -- the same mechanism `battle_forms`'s TM171 proved for Tera Blast. This
+  build closes GRASSYGLIDE, LASHOUT, METEORBEAM, MISTYEXPLOSION, POLTERGEIST
+  and SCORCHINGSANDS (TM172-TM177). Every one of these items is BYTELESS on
+  purpose: Gen 1's item space is a single byte and this project has three
+  real ones left system-wide, but `game/src/inventory/Bag.lua` keys a save's
+  inventory by item id rather than by byte, so a byteless TM still buys,
+  holds and teaches on this engine's own save and only loses a round trip
+  through a real Game Boy `.sav` export, which nothing this pipeline invents
+  needs to survive. Sold on the Celadon department store's stone floor,
+  gated behind MOVES=ALL like every other learnset widening this mod does,
+  so GEN-NATIVE stays exactly as it was. `KNOWN_UNREACHABLE` in the
+  effectmodeled test now names the remaining ten instead of sixteen: six are
+  tutor-only in PokeAPI's own data (the Let's Go partner Pikachu/Eevee's own
+  signature moves) with no engine mechanism to reach them at all -- nothing
+  under `game/src` implements a move tutor of any kind -- and four are
+  level-up moves this mod's single-canonical-version-group snapshot still
+  misses in an older game, a version-group-selection policy question
+  reported rather than fixed in this pass.
+
 ## 0.26.1
 
 ### Fixed

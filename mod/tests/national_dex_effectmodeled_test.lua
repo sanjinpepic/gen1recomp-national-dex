@@ -17,19 +17,56 @@
 --
 --   2. effectModeled = TRUE ought to be REACHABLE -- in a learnset (checked
 --      with MOVES=ALL, the one setting that actually widens one) or a tmhm
---      entry -- or the "true" is a promise nothing in this mod keeps. This
---      run turned up sixteen that are not: KNOWN_UNREACHABLE below, read off
---      this file rather than re-derived, so a SEVENTEENTH appearing without
---      anyone adding it here fails loudly instead of joining the pile
---      unnoticed. None of the sixteen is currently taught by a dependent mod
---      either (battle_forms's own data was checked) -- this mod's own
---      level-up widening (src/moves.lua) is the only route it has, its
---      source shards carry one canonical version-group's level-up rows per
---      species, and PokeAPI's own more-recent games moved every one of
---      these off level-up (onto an egg, tutor or machine route this mod does
---      not model) for every species that still knows it. Not a bug in the
---      registration path -- a real hole in what a fresh install can teach --
---      and this is where that hole is written down rather than left silent.
+--      entry -- or the "true" is a promise nothing in this mod keeps. 0.26.1
+--      found sixteen that were not. src/machinemoves.lua (0.27.0) closed six
+--      of them -- GRASSYGLIDE, LASHOUT, METEORBEAM, MISTYEXPLOSION,
+--      POLTERGEIST, SCORCHINGSANDS -- the ones PokeAPI records a real
+--      "machine" (TM) route for, taught the same way
+--      dev/battle_forms_mod/src/terablasttm.lua proved the mechanism with
+--      TM171/Tera Blast. KNOWN_UNREACHABLE below now names the ten still
+--      open, read off this file rather than re-derived, so an ELEVENTH
+--      appearing without anyone adding it here fails loudly instead of
+--      joining the pile unnoticed. None of the ten is currently taught by a
+--      dependent mod either (battle_forms's own data was checked). Two
+--      groups, for two different reasons:
+--
+--      Six are TUTOR-only in PokeAPI's own data (BADDYBAD, FREEZYFROST,
+--      GLITZYGLOW and SPARKLYSWIRL on eevee-starter; FLOATYFALL and
+--      SPLISHYSPLASH on pikachu-starter -- the Let's Go partner Pokemon's
+--      own signature moves, both already registered as national_dex forms
+--      with otherwise-empty learnsets). Nothing under game/src implements a
+--      move-tutor NPC, menu or mechanism of any kind -- confirmed by reading
+--      the engine, not assumed -- so there is no route to build for these at
+--      all, byteless or otherwise. Baking them into the form's own level-1
+--      learnset was considered and rejected: PokeAPI calls this method
+--      "tutor", never "level-up", and forcing a route the source data itself
+--      does not claim is the exact invention
+--      dev/battle_forms_mod/src/terablasttm.lua's own header already refused
+--      for Tera Blast.
+--
+--      Four are LEVEL-UP moves this mod's own pipeline still misses, for a
+--      different reason (HEALORDER on Vespiquen; HEARTSTAMP on Jynx,
+--      Smoochum, Luvdisc, Woobat and Swoobat, plus an EGG route on Miltank;
+--      NEEDLEARM on Cacnea, Cacturne, Maractus, Quilladin and Chesnaught;
+--      STEAMROLLER on Golem, Golem-Alola, Venipede, Whirlipede and
+--      Scolipede). Every one of these species really did learn the move by
+--      level-up in a real mainline game -- just not in the single most
+--      modern version group tools/fetch_national_dex.py's own
+--      choose_version_group prefers per species, which is this mod's
+--      documented, deliberate policy (one canonical version group's
+--      level-up rows per species) rather than a bug in the machine-route
+--      pipeline this file otherwise pins. Widening that policy to fall back
+--      across older version groups would fix these four, but it is a change
+--      to how EVERY species' learnset is chosen, not a new acquisition
+--      route, and is reported here rather than built as a side effect of
+--      this pass. (Gen 2's real breeding mechanism, def.eggMoves in
+--      game/src/core/gen2/Breeding.lua, DOES let a species inherit an egg
+--      move from a compatible parent -- contrary to what a purely tutor/egg
+--      framing might assume, egg is NOT unimplemented on this engine -- but
+--      it needs two compatible parents and a Day Care visit to reach one
+--      move on one species, and HEARTSTAMP's only egg carrier, Miltank,
+--      gains nothing from it that the level-up fallback above would not
+--      already cover, so it was not built for a single redundant case.)
 package.path = "./?.lua;./?/init.lua;" .. package.path
 love = love or require("tests.love_stub")
 
@@ -147,15 +184,17 @@ T.check(checkedFalse > 1000,
 -- pass.
 --------------------------------------------------------------------------
 local KNOWN_UNREACHABLE = {
+  -- tutor-only, no engine mechanism exists (see the header above)
   BADDYBAD = true, FLOATYFALL = true, FREEZYFROST = true, GLITZYGLOW = true,
-  GRASSYGLIDE = true, HEALORDER = true, HEARTSTAMP = true, LASHOUT = true,
-  METEORBEAM = true, MISTYEXPLOSION = true, NEEDLEARM = true,
-  POLTERGEIST = true, SCORCHINGSANDS = true, SPARKLYSWIRL = true,
-  SPLISHYSPLASH = true, STEAMROLLER = true,
+  SPARKLYSWIRL = true, SPLISHYSPLASH = true,
+  -- level-up in a real game, but not this species' single chosen version
+  -- group -- a version-group-selection policy question, reported not fixed
+  HEALORDER = true, HEARTSTAMP = true, NEEDLEARM = true, STEAMROLLER = true,
 }
 local knownCount = 0
 for _ in pairs(KNOWN_UNREACHABLE) do knownCount = knownCount + 1 end
-T.eq(knownCount, 16, "the documented gap list itself names exactly sixteen")
+T.eq(knownCount, 10, "the documented gap list itself names exactly ten -- "
+  .. "0.27.0 closed six of the original sixteen with a machine (TM) route")
 
 local checkedTrue, unexpectedGaps = 0, {}
 for id, move in pairs(Data.moves) do

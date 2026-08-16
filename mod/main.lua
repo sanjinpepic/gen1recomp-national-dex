@@ -171,13 +171,34 @@ return function(mod)
   -- `move_effects` and the two games' effect vocabularies are disjoint -- see
   -- tools/build_moves.py.  Optional like every other data sibling: a missing
   -- file costs the modern moves and nothing else.
+  local widenMoves = mod.options:get("moves") == "all"
   local movePayload = loadOptionalSibling(mod,
     "data/moves/generated/registry_gen" .. (generation == 2 and 2 or 1) .. ".lua")
   if movePayload then
     local Moves = loadSibling(mod, "src/moves.lua")
     if Moves then
-      Moves(mod, movePayload, generation, mod.options:get("moves") == "all",
-        display)
+      Moves(mod, movePayload, generation, widenMoves, display)
+    end
+  end
+
+  -- The byteless-TM pipeline (src/machinemoves.lua): the "machine route"
+  -- slice of the sixteen-move gap national_dex_effectmodeled_test.lua
+  -- documents. Ordered after the block above for the same reason
+  -- src/moves.lua itself is ordered after species registration: it patches
+  -- a species' tmhm and reads a move's effectModeled flag back off the
+  -- merged registry, so both have to exist first. Gated on the SAME
+  -- widenMoves flag as the learnset widening above -- GEN-NATIVE promises a
+  -- learnset (and, by the same logic, a tmhm list) stays byte-identical to
+  -- a build without the option, so this registers nothing at all unless the
+  -- player opted in. Optional like every other generated data sibling: a
+  -- missing payload (an older mod zip, or a build with nothing left to
+  -- close) costs only these items, never the load.
+  local machineTeach = loadOptionalSibling(mod,
+    "data/moves/generated/machine_teach.lua")
+  if machineTeach then
+    local Machinemoves = loadSibling(mod, "src/machinemoves.lua")
+    if Machinemoves then
+      Machinemoves(mod, machineTeach, widenMoves)
     end
   end
 
