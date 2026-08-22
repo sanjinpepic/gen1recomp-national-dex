@@ -3,6 +3,14 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.27.3
+
+### Fixed
+
+- **A Pokemon that had ALREADY learned one of those broken moves keeps it broken, and 0.27.2 did nothing about that.** The previous fix stopped new learnset rows naming a move the game cannot resolve; it could not help a Pokemon that learned one first, because a move slot is save data -- `id`, `pp` and `maxPp` are written into the save when the move is learned and nothing re-derives them afterwards. A real Silver save still showed `ROLYCOLY  RAPIDSPIN 0/0` after updating, and a boxed `TOGEPI  SWEETKISS 0/0` beside it. Those slots are now repaired when the save loads: an id the merged move table cannot resolve is matched by its normalised form against the one real move that claims it, rewritten to that id, and given the record's full PP -- full rather than preserved because a broken slot's PP was zero and stayed zero, so there is no spent PP to respect.
+- **The repair is deliberately the narrowest thing that can work, because it edits a player's save on load.** A slot whose id already resolves is never touched, whoever registered it -- a move this mod itself supplies is left exactly alone. An id whose normalised form matches nothing is left alone too: it may belong to another mod that has not loaded yet, and a guess would be worse than the 0/0 it replaced. An id whose normalised form matches more than one real move is refused rather than picked between. Party and storage are both walked, in both box shapes, because a broken slot follows the Pokemon into a box and a player who stored theirs before the fix is exactly who this has to reach. Running twice changes nothing the second time.
+- **Not a migration, though it looks like one.** `SaveData.runMigrations` only runs a mod's chain when the save carries a `modData` slice for that mod, and this mod writes none -- a real save's `modData` holds one entry and it belongs to another mod. Adding a slice purely to unlock a migration would mean writing to every save that loads in order to fix the few that need it.
+
 ## 0.27.2
 
 ### Fixed

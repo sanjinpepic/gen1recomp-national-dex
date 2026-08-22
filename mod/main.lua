@@ -181,6 +181,35 @@ return function(mod)
     end
   end
 
+  -- Repairing move slots an EARLIER version of this mod already wrote.
+  -- src/moves.lua above stops new ones being made; a move slot is save data,
+  -- so a Pokemon that already learned a move under a spelling this game does
+  -- not register keeps it at 0/0 PP forever without this. See
+  -- src/moverepair.lua's own header for why this is a save.loaded pass rather
+  -- than the migration it looks like it should be.
+  do
+    local Repair = loadSibling(mod, "src/moverepair.lua")
+    if Repair then
+      Repair.bind({ log = mod.log })
+      local function onSave(ev)
+        local ok, err = pcall(function()
+          local game = (ev and ev.game) or mod.game
+          local save = (ev and ev.save) or (game and game.save)
+          local data = game and game.data
+          if save and data and data.moves then Repair.run(save, data.moves) end
+        end)
+        if not ok then
+          mod.log:warn("national_dex: move-slot repair failed (%s) -- no slot "
+            .. "was changed", tostring(err))
+        end
+      end
+      -- Both, for the reason every save-holding module in this project binds
+      -- both: `save` is replaced wholesale on NEW GAME and on CONTINUE.
+      mod.events:on("save.loaded", onSave)
+      mod.events:on("save.created", onSave)
+    end
+  end
+
   -- The byteless-TM pipeline (src/machinemoves.lua): the "machine route"
   -- slice of the sixteen-move gap national_dex_effectmodeled_test.lua
   -- documents. Ordered after the block above for the same reason
