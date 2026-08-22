@@ -3,6 +3,13 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.27.2
+
+### Fixed
+
+- **On Gold and Silver, 1388 level-up moves across 869 species arrived at 0/0 PP and could never be used.** A real save had a level 6 ROLYCOLY holding `RAPIDSPIN 0/0` while every other move in the party -- `WATER_GUN`, `QUICK_ATTACK`, `POISON_STING` -- worked fine. The difference is spelling. Gold and Silver register 116 of their 253 move ids with underscores, so the cart owns Rapid Spin as `RAPID_SPIN`; this mod's own payload spells it `RAPIDSPIN`, `normaliseId` strips the punctuation, the two match, and registration is correctly SKIPPED -- the cart's Rapid Spin is a real implementation with the ROM's own animation and index, and overwriting it would be this mod rewriting the base game to say what it already says. That half was right and is unchanged. What was missing is that the learnset shards still said `RAPIDSPIN`, and nothing translated it into the id the game actually holds, so a widened species got a move slot naming a record that does not exist -- which the Gen 2 mon builder reads as `pp = moveDef and moveDef.pp or 0`. `existingIds` now answers WHICH id the cart registered rather than merely that it did, and the widening path maps this mod's spelling onto it before adding the row. The translation happens before the duplicate check, so a species that already knew the cart's spelling does not also gain this mod's -- one move listed twice, one of them dead.
+- **Gen 1 was never affected, and the reason is worth recording.** Red owns 165 moves to Gold's 253, and the extra ones are precisely the Gen 2 additions -- Rapid Spin, Scary Face, Giga Drain, Metal Claw, Baton Pass -- that this mod otherwise registers itself. On Red they collide with nothing, every id resolves, and the identical code is silent. The translation table this fix builds is empty there, so nothing about a Gen 1 boot changes.
+
 ## 0.27.1
 
 ### Fixed

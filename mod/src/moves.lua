@@ -96,7 +96,11 @@ function M.existingIds(registry)
   end
   for _, id in ipairs(ids) do
     local key = M.normaliseId(id)
-    if key then seen[key] = true end
+    -- The ACTUAL id, not `true`.  Callers that only wanted a yes/no still get
+    -- a truthy value, and the one that needs to know WHICH spelling the cart
+    -- uses can now ask -- see M.install's own translation table and the bug it
+    -- exists to close.
+    if key and seen[key] == nil then seen[key] = id end
   end
   return seen
 end
@@ -111,7 +115,24 @@ end
 -- `allowed` is the filter described at the top of this file.  It is passed in
 -- rather than closed over so a test can hand this pure function a set of its
 -- own and prove the filter is what decides, not the data.
-function M.mergeRows(existing, additions, allowed)
+--- `translate` maps this mod's own spelling of a move onto the one the running
+--- cart actually registered it under, and it is the whole fix for a bug worth
+--- describing because the shape of it is not obvious.
+---
+--- normaliseId strips punctuation, so this mod's RAPIDSPIN matches the cart's
+--- RAPID_SPIN and M.install correctly SKIPS registering over it -- the cart's
+--- Rapid Spin is a real implementation with the ROM's own animation and index.
+--- But the learnset shards still say RAPIDSPIN, and nothing translated that
+--- into the id the game can actually resolve.  A species widened with such a
+--- row got a move slot naming a record that does not exist, which the Gen 2
+--- mon builder reads as `pp = moveDef and moveDef.pp or 0` -- so the move
+--- showed up in the FIGHT menu at 0/0 PP and could never be used.
+---
+--- Gen 2 only, and not because the code differs: Gold and Silver own 253 moves
+--- to Red's 165, and the extra ones are exactly the Gen 2 additions (Rapid
+--- Spin, Scary Face, Giga Drain, Metal Claw, ...) that this mod otherwise
+--- registers itself.  On Red they collide with nothing, so every id resolves.
+function M.mergeRows(existing, additions, allowed, translate)
   local rows, seen = {}, {}
   for _, row in ipairs(existing or {}) do
     if type(row) == "table" and type(row.move) == "string" then
@@ -125,11 +146,17 @@ function M.mergeRows(existing, additions, allowed)
   local added = 0
   for _, row in ipairs(additions or {}) do
     if type(row) == "table" and type(row.move) == "string"
-      and not seen[row.move] and allowed[row.move] then
-      seen[row.move] = true
-      local level = type(row.level) == "number" and row.level or 1
-      rows[#rows + 1] = { level = math.max(1, level), move = row.move }
-      added = added + 1
+      and allowed[row.move] then
+      -- Translated BEFORE the dedup, so a species whose existing rows already
+      -- name the cart's spelling does not also gain this mod's spelling of the
+      -- same move -- which would be one move listed twice, one of them dead.
+      local moveId = (translate and translate[row.move]) or row.move
+      if not seen[moveId] then
+        seen[moveId] = true
+        local level = type(row.level) == "number" and row.level or 1
+        rows[#rows + 1] = { level = math.max(1, level), move = moveId }
+        added = added + 1
+      end
     end
   end
   table.sort(rows, function(a, b)
@@ -326,10 +353,16 @@ function M.install(mod, payload, generation, widen, display)
   -- against the live registry rather than a list baked in at build time.
   local existing = M.existingIds(mod.content.moves)
   local allowed = {}
+  -- This mod's spelling -> the cart's, for every move it stood aside for.
+  -- Empty on a game that owns none of them, which is why Red never saw the
+  -- bug this closes.
+  local translate = {}
   for id, record in pairs(payload.moves) do
     local key = M.normaliseId(id)
     if key and existing[key] then
       skipped = skipped + 1
+      local cartId = existing[key]
+      if type(cartId) == "string" and cartId ~= id then translate[id] = cartId end
       -- An id the cart owns is an id the ENGINE implements, so it is allowed
       -- into a widened learnset regardless of what this mod's own curation
       -- said about the PokeAPI description of it.
@@ -388,7 +421,8 @@ function M.install(mod, payload, generation, widen, display)
           end)
           if ok and type(value) == "table" then record = value end
           if record then
-            local merged, added = M.mergeRows(record[field], rows, allowed)
+            local merged, added = M.mergeRows(record[field], rows, allowed,
+                                              translate)
             if added > 0 then
               if safe(function()
                 mod.content.pokemon:patch(speciesId, { [field] = merged })
