@@ -3,6 +3,34 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.28.2
+
+### Fixed
+
+- **The curated move chances are now checked against a machine-readable source instead of being trusted.** Every number added in 0.28.0 was written from memory, and 0.28.1 tried to verify them from the games' own flavour text -- which cannot work, because flavour text never states a percentage. Worse, it introduced two errors of its own: Population Bomb's "one to ten times in a row" describes ten hits each rolling accuracy separately, not a variable hit count, and Matcha Gotcha really does strike every opponent whatever PokeAPI's `target` field says. Both are restored. `tools/verify_move_meta.py` now diffs all ninety-two against the open move dataset published by the Pokemon Showdown battle simulator, field against field with no interpretation anywhere, and every accepted difference is written down in the tool with its reason.
+- **Two real errors the check caught.** Wicked Torque is a 10% chance to sleep, not the 30% its four siblings carry, and it had been given 30 by pattern rather than by fact. Lunar Blessing restores a quarter of max HP, not a half. Both are corrected, and seventy-eight of the ninety-two matched the reference exactly on every field checked -- ailment, chance, flinch, stat changes, hit counts, drain, healing and critical ratio.
+- **Four moves used the wrong PokeAPI category.** Armor Cannon, Headlong Rush, Make It Rain and Spin Out lower the USER's stats, and PokeAPI files that shape as `damage+raise` rather than `damage+lower` -- Close Combat, Draco Meteor, Superpower and Hammer Arm all do. Nothing about the registries changes, since both branches classify identically, but the read API now reports the category the rest of the roster uses.
+
+## 0.28.1
+
+### Fixed
+
+- **Three curated move entries disagreed with the games' own flavour text, and one of them was simply wrong.** Every hand-written entry added in 0.28.0 was checked against the English flavour text PokeAPI does ship for these moves, which is an independent source for what a move does even though it never states a percentage. Population Bomb was recorded as a fixed ten hits where Scarlet and Violet say "one to ten times in a row", so it now carries `min_hits = 1, max_hits = 10`. Lunar Blessing was recorded as healing only the user, but its own `target` is `all-allies` and the text says it restores HP and cures status "for itself and its ally Pokemon"; the entry says so now. Matcha Gotcha claimed to drain from every opponent, which was an invention -- PokeAPI's `target` for it is `selected-pokemon` and the Scarlet/Violet text names one target -- so that claim is gone.
+- **Most of what the check flagged came from the wrong game, and acting on it would have made the data worse.** PokeAPI serves Legends: Arceus flavour text beside Scarlet and Violet's, and that game runs a different battle system: it has action speed, frostbite, drowsy, flat "+50 percent damage" boosts and evasion clauses on moves that carry none of them in the mainline games. Fifteen of the twenty disagreements were grounded only in Legends: Arceus wording -- Bitter Malice "may also leave the target with frostbite" is true there and meaningless here -- and were deliberately left alone. Sixty-seven entries agreed outright.
+- **A drain move with a second secondary effect silently lost it.** The `damage-heal` branch returned the drain id without ever looking at `ailment_chance`, `flinch_chance` or the stat changes beside it, so Matcha Gotcha would have registered as a plain drain with its 20% burn dropped -- the same hole the flinch guard closed one branch further down in 0.28.0, in the branch next to it. Both generations now refuse a drain that comes with anything else rather than modelling half of it.
+
+## 0.28.0
+
+### Added
+
+- **Ninety-two modern moves arrived carrying no effect data at all, and now carry it.** PokeAPI serves ids 827-919 -- the Legends Arceus and Generation IX intake -- with a null `meta` block, no `effect_chance` and an empty `effect_entries`, so both of the build's curation passes were starving rather than disagreeing: the metadata pass had no block to read, and the text pass fails closed on empty text. All ninety-two registered as plain damage carrying `effectModeled = false`, which also kept every one of them out of any widened learnset and out of Gold's Metronome pool. `tools/move_meta_curated.py` now supplies the missing block in PokeAPI's own shape, merged at load so the same two passes judge these moves exactly as they judge the other 741; twelve execute as a result, four of them on both generations -- Mountain Gale's 30% flinch, Shelter's two-stage Defense boost, Twin Beam's two hits, Bitter Blade's drain, and the secondaries on Bleakwind, Wildbolt and Sandsear Storm among them.
+- **The `api/` tree now carries the real numbers even where neither engine can run them.** That tree exists so a consumer can have the move data without re-fetching PokeAPI, and for these ninety-two it had been serving `ailment = "none", ailmentChance = 0, statChanges = {}` -- a confident zero rather than an absence, which is the worse of the two failures. Malignant Chain now reports `ailment = "toxic"` at 50% while `gen2EffectModeled` stays false: this engine has no badly-poison-on-hit id, and one that has will find the number waiting. Every ailment recorded this way was checked against PokeAPI's own English flavour text, which it does ship for these moves; the percentages are the mainline values.
+
+### Fixed
+
+- **Nine cart-era stat moves were being blocked by a guard aimed at something else entirely.** The phrases `user's Defense` and `user's Speed` sit in the text gate because PokeAPI's `stat_changes` never says whose stat moves, and the on-hit ids split on exactly that -- `EFFECT_SPEED_DOWN_HIT` lowers the target's Speed where Hammer Arm lowers the user's, so without the guard that move would register an effect aimed at the wrong battler. They were also stopping Barrier, Harden, Withdraw, Acid Armor, Defense Curl, Iron Defense, Steel Wing, Agility and Rock Polish, whose ids act on the user and are simply correct. The ids that genuinely raise the user now account for those phrases, and Clanging Scales, Hammer Arm, Ice Hammer and Scale Shot stay blocked for the original reason.
+- **A move with both a stat chance and a flinch chance silently lost the flinch.** The `damage-lower` branch tested `flinch_chance and not changes` and then fell through to the stat table, so a move with both would have registered as a plain stat drop with its flinch quietly gone -- the same shape of loss the recoil phrase was added to stop. Both generations now refuse that combination outright rather than modelling half of it.
+
 ## 0.27.3
 
 ### Fixed
