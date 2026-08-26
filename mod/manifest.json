@@ -1,7 +1,7 @@
 {
   "id": "national_dex",
   "name": "National Dex",
-  "version": "0.28.2",
+  "version": "0.29.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -21,5 +21,5 @@
     "universal_sprites"
   ],
   "conflicts": [],
-  "description": "Registers the full 1025-species national dex with PokeAPI entries and modern typing."
+  "description": "Registers the full 1025-species national dex with PokeAPI entries and modern typing. As of 0.29.0 the read API also answers abilityById for all 313 main-series abilities -- what each one actually does, in PokeAPI's own words, plus the generation it arrived in and any behaviour change between generations. Nothing here executes: neither engine has an ability system, so this is display data and a handoff for an engine that does."
 }

@@ -32,7 +32,9 @@ local M = {}
 --    behind them.  Nothing that existed at 1 or 2 changed meaning, so a
 --    consumer written against either keeps working -- which is exactly what
 --    the >= check is for.
-M.API_VERSION = 3
+-- 4: added abilityById / listAbilities and the sharded ability payload behind
+--    them.  Additive in the same way: nothing below 4 changed meaning.
+M.API_VERSION = 4
 
 -- ------------------------------------------------------------- extras load
 --
@@ -157,6 +159,32 @@ end
 -- registered so the move exists by name and stats; its effect is plain
 -- damage, not what the move does, and this mod refuses to put it in any
 -- learnset.  Treat a false there as "this engine cannot execute this move".
+-- ---------------------------------------------------------- abilities load
+--
+-- Built by tools/build_abilities.py into data/abilities/generated/api/<NNN>.lua
+-- plus an index.lua mapping ability id -> shard number.  Same lazy sharded
+-- shape as the payloads above.
+--
+-- DISPLAY AND HANDOFF DATA, AND NOTHING ELSE. Neither engine in this project
+-- has an ability system -- Gen 1 and Gen 2 carts predate the concept entirely
+-- -- so nothing here executes and no `modeled` flag is carried: there is
+-- nothing for an ability to be modeled AGAINST, and a uniformly false boolean
+-- would imply a possibility that does not exist. Species records name their
+-- abilities today and say nothing about what they do; this is what they do,
+-- for a dex page to show and for an engine that HAS abilities to read.
+--
+-- No structured meta either, unlike moves. PokeAPI gives a move a `meta`
+-- object this mod reads straight; it gives an ability one English sentence and
+-- one longer paragraph. Deriving structure from that prose by pattern-matching
+-- would be inventing data and calling it extracted.
+local ABILITIES_INDEX_PATH = "data/abilities/generated/api/index.lua"
+local ABILITIES_FILENAME_WIDTH = 3
+
+local function abilitiesShardPath(number)
+  return string.format("data/abilities/generated/api/%0"
+    .. ABILITIES_FILENAME_WIDTH .. "d.lua", number)
+end
+
 local MOVES_INDEX_PATH = "data/moves/generated/api/index.lua"
 -- must match build_moves.py's write_shards() zero-padding, exactly as
 -- EXTRAS_FILENAME_WIDTH must match write_extras()'s
@@ -355,6 +383,8 @@ function M.install(mod)
   -- mod -- see makeShardLookup above.
   local extrasFor = makeShardLookup(mod, EXTRAS_INDEX_PATH, extrasShardPath)
   local moveFor, moveIds = makeShardLookup(mod, MOVES_INDEX_PATH, movesShardPath)
+  local abilityFor, abilityIds =
+    makeShardLookup(mod, ABILITIES_INDEX_PATH, abilitiesShardPath)
   local evolutionFor, evolutionIds =
     makeShardLookup(mod, EVOLUTIONS_INDEX_PATH, evolutionsShardPath)
 
@@ -502,6 +532,41 @@ function M.install(mod)
   -- the one it needs rather than paying for all 833.
   mod.exports.listMoves = function()
     return moveIds()
+  end
+
+  -- abilityById("INTIMIDATE") -> what that ability DOES, or nil for an id this
+  -- mod has no record for.  A COPY, like every other reply here.
+  --
+  -- The id is the ability's name uppercased with separators removed, which is
+  -- the same spelling a species' own extras record can be reduced to: an
+  -- extras entry says `name = "Vital Spirit"`, and VITALSPIRIT is the key.
+  -- Matching the move ids' convention rather than inventing a third.
+  --
+  -- Fields: id, slug, name, abilityId (PokeAPI's own number), generation,
+  -- shortEffect, effect, speciesCount, effectChanges.
+  --
+  -- NOTHING HERE EXECUTES on either engine -- see the abilities-load section
+  -- above.  A consumer on this project's own games should treat a reply as
+  -- text to display; one running an engine that has abilities has the whole
+  -- behaviour in `effect`.
+  --
+  -- `effectChanges` is the field to read before implementing anything: it is
+  -- PokeAPI's own record of an ability whose behaviour CHANGED between
+  -- generations, so an implementer working from `effect` alone would get
+  -- those wrong.  Empty for the great majority.
+  mod.exports.abilityById = function(id)
+    if type(id) ~= "string" then return nil end
+    local record = abilityFor(id)
+    if type(record) ~= "table" then return nil end
+    return deepCopy(record)
+  end
+
+  -- Every ability id this mod carries data for, sorted.  Thin for the same
+  -- reason listMoves and listSpecies are: it is for building a menu or
+  -- checking membership, and a caller wanting one ability's text asks
+  -- abilityById for it.
+  mod.exports.listAbilities = function()
+    return abilityIds()
   end
 
   -- evolutionsOf("EEVEE") / evolutionsOf(133) -> what to DRAW for one

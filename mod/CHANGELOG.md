@@ -3,6 +3,20 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.29.0
+
+### Added
+
+- **Abilities now say what they do.** Every one of the 1389 species records already named its abilities -- `{ name = "Vital Spirit", slot = 1, hidden = true }` -- and said nothing whatever about their behaviour: a label with nothing behind it. `abilityById("INTIMIDATE")` now answers the effect in PokeAPI's own words, short and long, with the generation it arrived in, PokeAPI's own id, and how many species carry it. 313 main-series abilities, which is every one any species in this dex names -- checked, not assumed: the suite walks all 1389 records and fails on a single name with no record behind it.
+- **`effectChanges`, which is the field an implementer has to read.** PokeAPI's own record of an ability whose behaviour CHANGED between generations -- 42 of them here. Somebody implementing from the current text alone would get every one of those wrong.
+- `listAbilities` alongside it, thin for the same reason `listMoves` is. The API version goes to 4; nothing below it changed meaning.
+
+### Notes
+
+- **Nothing here executes, and there is deliberately no `modeled` flag.** Moves carry `gen1EffectModeled`/`gen2EffectModeled` because the engine HAS an effect system that some of them map onto. Neither engine in this project has an ability system at all -- Gen 1 and Gen 2 carts predate the concept -- so there is nothing for an ability to be modelled against, and a uniformly false boolean would imply a possibility that does not exist. On these games a reply is text to display; on an engine that has abilities it is the whole behaviour. A suite pins the absence of that flag, so a later build cannot quietly start claiming otherwise.
+- **No structured meta either, unlike moves.** PokeAPI gives a move a `meta` object this mod reads straight through; it gives an ability one English sentence and one paragraph. Deriving structure from that prose by pattern-matching would be inventing data and calling it extracted, which is the failure the 92 curated moves were fixed by hand to avoid.
+- Ids follow the move convention -- separator-free uppercase -- so a species' own `"Vital Spirit"` reduces straight to `VITALSPIRIT` without a lookup table. The suite checks every id against that rule.
+
 ## 0.28.2
 
 ### Fixed
