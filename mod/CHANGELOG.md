@@ -3,6 +3,14 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.31.1
+
+### Fixed
+
+- **0.31.0 said this mod registers no items. It does, and always has.** `src/machinemoves.lua` creates the byteless TMs (TM172-TM177) that teach six otherwise-unreachable modern moves -- a feature from 0.27.0 whose entire purpose is making items real. The claim was wrong, and so was the test behind it: it grepped three files by name, none of them the one that registers, and passed while the comment above it asserted the opposite.
+- **The test now scans every source file and names its one permitted registrar.** A seventh registration, or a first one from the catalogue path, fails here instead of hiding behind a list that happens not to include the file it lives in. It also checks the named exception still exists, because a test naming an exception that has since been deleted is a test asserting nothing.
+- The distinction 0.31.0 was reaching for still holds and is worth keeping: the CATALOGUE registers nothing, so describing Charizardite X cannot put a Mega Stone in the bag of somebody running the dex without battle_forms. It was the blanket phrasing that was false, not the design.
+
 ## 0.31.0
 
 ### Added

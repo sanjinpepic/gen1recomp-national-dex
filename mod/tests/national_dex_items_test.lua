@@ -30,22 +30,55 @@ local count = 0
 for _ in pairs(index) do count = count + 1 end
 T.check(count > 2000, "the item index carries the whole catalogue (" .. count .. ")")
 
--- --- this mod registers NOTHING ---------------------------------------------
--- The load-bearing check. A dex that registered Charizardite X would put a Mega
--- Stone into the bag of a player running the dex WITHOUT battle_forms -- an
--- item that does nothing and cannot be used. Describing is free; registering is
--- not, and this mod does only the first.
-local registers = {}
-for _, name in ipairs({ "main.lua", "src/api.lua", "src/nationaldex.lua" }) do
-  local handle = io.open(MOD .. "/" .. name, "r")
-  if handle then
-    local body = handle:read("*a")
-    handle:close()
-    if body:find("content%.items:register") then registers[#registers + 1] = name end
+-- --- the CATALOGUE registers nothing ----------------------------------------
+-- The load-bearing check, and it has to be stated precisely rather than
+-- broadly. A dex that registered Charizardite X would put a Mega Stone into the
+-- bag of a player running the dex WITHOUT battle_forms -- an item that does
+-- nothing and cannot be used. So nothing in the catalogue path may register.
+--
+-- This mod DOES register six items, and always has: src/machinemoves.lua
+-- creates the byteless TMs (TM172-TM177) that teach six otherwise-unreachable
+-- modern moves, which is a feature that deliberately makes items real. The
+-- earlier version of this check grepped three files by name, missed that one
+-- entirely, and passed while the comment above it claimed the mod registered
+-- nothing at all.
+--
+-- Scanning EVERY source file and naming the one permitted registrar is the
+-- stronger test: a seventh registration, or a first one from the catalogue
+-- path, fails here instead of hiding behind a list that happens not to include
+-- the file it lives in.
+local PERMITTED = { ["src/machinemoves.lua"] = "the byteless TMs (TM172-TM177)" }
+local unexpected = {}
+for _, name in ipairs(T.fs and T.fs.list and T.fs.list(MOD .. "/src") or {}) do
+  local rel = "src/" .. name
+  if name:match("%.lua$") and not PERMITTED[rel] then
+    local handle = io.open(MOD .. "/" .. rel, "r")
+    if handle then
+      local body = handle:read("*a")
+      handle:close()
+      if body:find("content%.items:register") then unexpected[#unexpected + 1] = rel end
+    end
   end
 end
-T.eq(#registers, 0, "this mod registers no items ("
-  .. (#registers > 0 and table.concat(registers, ", ") or "nothing does") .. ")")
+local mainHandle = io.open(MOD .. "/main.lua", "r")
+if mainHandle then
+  local body = mainHandle:read("*a")
+  mainHandle:close()
+  if body:find("content%.items:register") then unexpected[#unexpected + 1] = "main.lua" end
+end
+T.eq(#unexpected, 0, "only the machine TMs register items ("
+  .. (#unexpected > 0 and table.concat(unexpected, ", ") or "nothing else does") .. ")")
+
+-- And the permitted one really is still there: a test naming an exception that
+-- has since been deleted is a test asserting nothing.
+local machines = io.open(MOD .. "/src/machinemoves.lua", "r")
+T.check(machines ~= nil, "the one permitted registrar still exists")
+if machines then
+  local body = machines:read("*a")
+  machines:close()
+  T.check(body:find("content%.items:register") ~= nil,
+    "and still registers -- the exception is real, not stale")
+end
 
 -- --- the record's shape -----------------------------------------------------
 local leftovers = itemFor("LEFTOVERS")

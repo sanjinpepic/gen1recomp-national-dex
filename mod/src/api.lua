@@ -197,6 +197,14 @@ end
 -- payload is where it can read one line of display text instead of carrying a
 -- second copy.  With battle_forms uninstalled a player sees no Mega Stone
 -- anywhere -- and the dex can still say what one is.
+--
+-- THE CATALOGUE registers nothing.  This MOD does: src/machinemoves.lua has
+-- created the byteless TMs (TM172-TM177) since 0.27.0, which is a feature that
+-- deliberately makes items real.  The two are separate paths and the
+-- distinction is the whole point -- but "the dex registers no items" is not
+-- true and should not be said.  tests/national_dex_items_test.lua scans every
+-- source file and names that one permitted registrar, so a second one fails
+-- rather than joining it quietly.
 local ITEMS_INDEX_PATH = "data/items/generated/api/index.lua"
 local ITEMS_FILENAME_WIDTH = 3
 
