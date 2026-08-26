@@ -3,6 +3,20 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.31.0
+
+### Added
+
+- **The item catalogue: all 2222 of them.** `itemById("LEFTOVERS")` answers the category (one of PokeAPI's 54), the attributes (from its closed set of eight -- `holdable`, `usable-in-battle`, `consumable` and friends), the fling power where an item can be flung at all, and both the short and full effect text. `listItems` alongside it. The API version goes to 5; nothing below it changed meaning.
+- **Completeness was proven, not assumed.** Every one of PokeAPI's 54 item categories was walked and its listing checked against what shipped: 2223 items listed, 2222 records, nothing missing. The one gap is id 0, `"unknown"`, which has no usable identity and is dropped rather than shipped as a record that describes nothing.
+- **A `--held` fallback, because PokeAPI models a Z-Crystal as two items.** `electrium-z--bag` sits in the "unused" category and `electrium-z--held` in "z-crystals", so asking for `ELECTRIUMZ` would otherwise miss entirely. A bare id that finds nothing is retried once with `HELD` appended -- deliberately narrow, one suffix, only after an exact miss, because guessing at ids in general is how a lookup starts answering plausibly instead of correctly.
+
+### Notes
+
+- **This mod describes items and registers none, and a suite enforces it.** Species, moves and abilities cannot be made real by being described; an item can, because registering one is what puts it in a player's bag. A dex that registered Charizardite X would hand a Mega Stone to a player running the dex WITHOUT battle_forms -- an item that does nothing and cannot be used. So the test greps this mod's own sources for `content.items:register` and fails if it ever finds one.
+- **1269 of the 2222 carry no English effect text**, concentrated in the categories that never needed one -- machines, TM materials, unused entries. An empty string is how the payload says PokeAPI had none. It stays empty: a fabricated description would be worse than a blank one, and a consumer can only tell the difference if this never fabricates.
+- No sprite URLs are carried. This project ships no art and points at none; a catalogue of what items do has no need of an address where their icons live.
+
 ## 0.30.0
 
 ### Added

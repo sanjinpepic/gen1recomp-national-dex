@@ -34,7 +34,9 @@ local M = {}
 --    the >= check is for.
 -- 4: added abilityById / listAbilities and the sharded ability payload behind
 --    them.  Additive in the same way: nothing below 4 changed meaning.
-M.API_VERSION = 4
+-- 5: added itemById / listItems and the sharded item catalogue behind them.
+--    Additive again; nothing below 5 changed meaning.
+M.API_VERSION = 5
 
 -- ------------------------------------------------------------- extras load
 --
@@ -177,6 +179,32 @@ end
 -- object this mod reads straight; it gives an ability one English sentence and
 -- one longer paragraph. Deriving structure from that prose by pattern-matching
 -- would be inventing data and calling it extracted.
+-- -------------------------------------------------------------- items load
+--
+-- Built by tools/build_items.py into data/items/generated/api/<NNN>.lua plus an
+-- index.lua mapping item id -> shard number.  Same lazy sharded shape as
+-- everything above.
+--
+-- A CATALOGUE, NOT A REGISTRY, and the distinction matters more here than
+-- anywhere else in this mod.  The dex describes 1025 species most of which
+-- never appear, 833 moves most of which never execute, and 313 abilities none
+-- of which do -- describing has never implied existing.  Items are the first
+-- thing it carries that it COULD make real, because registering an item is
+-- what puts it in a player's bag.  This mod registers none of them.
+--
+-- battle_forms owns its own Z-Crystals, Mega Stones, Band, Orb and Shards: it
+-- registers them, triggers them, and decides when they are usable.  This
+-- payload is where it can read one line of display text instead of carrying a
+-- second copy.  With battle_forms uninstalled a player sees no Mega Stone
+-- anywhere -- and the dex can still say what one is.
+local ITEMS_INDEX_PATH = "data/items/generated/api/index.lua"
+local ITEMS_FILENAME_WIDTH = 3
+
+local function itemsShardPath(number)
+  return string.format("data/items/generated/api/%0"
+    .. ITEMS_FILENAME_WIDTH .. "d.lua", number)
+end
+
 local ABILITIES_INDEX_PATH = "data/abilities/generated/api/index.lua"
 local ABILITIES_FILENAME_WIDTH = 3
 
@@ -385,6 +413,7 @@ function M.install(mod)
   local moveFor, moveIds = makeShardLookup(mod, MOVES_INDEX_PATH, movesShardPath)
   local abilityFor, abilityIds =
     makeShardLookup(mod, ABILITIES_INDEX_PATH, abilitiesShardPath)
+  local itemFor, itemIds = makeShardLookup(mod, ITEMS_INDEX_PATH, itemsShardPath)
   local evolutionFor, evolutionIds =
     makeShardLookup(mod, EVOLUTIONS_INDEX_PATH, evolutionsShardPath)
 
@@ -567,6 +596,40 @@ function M.install(mod)
   -- abilityById for it.
   mod.exports.listAbilities = function()
     return abilityIds()
+  end
+
+  -- itemById("LEFTOVERS") -> what that item is and does, or nil.  A COPY, like
+  -- every other reply here.
+  --
+  -- Fields: id, slug, name, itemId (PokeAPI's own number), category (one of
+  -- 54), attributes (a list from a fixed 8 -- `holdable`, `usable-in-battle`,
+  -- `consumable` and friends), flingPower where the item can be flung at all,
+  -- shortEffect, effect, heldBySpeciesCount.
+  --
+  -- NOTHING HERE IS REGISTERED -- see the items-load section above.  A reply
+  -- describes an item; it does not put one in anybody's bag.
+  --
+  -- THE `--held` FALLBACK.  PokeAPI models a Z-Crystal as TWO records: the bag
+  -- item (`electrium-z--bag`, category "unused") and the held one
+  -- (`electrium-z--held`, category "z-crystals").  A caller naming the item
+  -- means the held one essentially always, and asking for ELECTRIUMZ would
+  -- otherwise miss entirely -- so a bare id that finds nothing is retried once
+  -- with HELD appended.  Deliberately narrow: one suffix, tried once, only
+  -- after an exact miss.  Guessing at ids in general is how a lookup starts
+  -- answering plausibly instead of correctly.
+  mod.exports.itemById = function(id)
+    if type(id) ~= "string" then return nil end
+    local record = itemFor(id)
+    if type(record) ~= "table" then record = itemFor(id .. "HELD") end
+    if type(record) ~= "table" then return nil end
+    return deepCopy(record)
+  end
+
+  -- Every item id this mod carries data for, sorted.  Thin for the same reason
+  -- listMoves and listAbilities are -- and thinner still in practice, because
+  -- there are 2222 of them and a caller wanting one asks itemById.
+  mod.exports.listItems = function()
+    return itemIds()
   end
 
   -- evolutionsOf("EEVEE") / evolutionsOf(133) -> what to DRAW for one
