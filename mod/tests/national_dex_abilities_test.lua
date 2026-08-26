@@ -141,4 +141,74 @@ end
 T.check(changed > 0, "some abilities record a behaviour change (" .. changed .. ")")
 T.eq(shaped, true, "and each names its version group and its text")
 
+-- --- the curated behaviour ---------------------------------------------------
+-- The prose is what PokeAPI says; `behaviour` is that prose read and converted
+-- into a closed vocabulary an engine can switch on. It sits BESIDE the text and
+-- never replaces it, which is why `expressible` exists: a false there tells an
+-- implementer to read `effect` and stop trusting the fields.
+local TRIGGERS = {
+  switch_in = true, switch_out = true, on_hit_taken = true,
+  on_contact_taken = true, on_move_used = true, turn_start = true,
+  turn_end = true, on_faint = true, on_stat_lowered = true, on_low_hp = true,
+  on_status_inflicted = true, on_weather = true, on_item_used = true,
+  passive = true, overworld = true,
+}
+local SCOPES = { self = true, target = true, foes = true, allies = true,
+                 field = true, all = true }
+local KINDS = {
+  stat_change = true, stat_multiplier = true, damage_dealt_multiplier = true,
+  damage_taken_multiplier = true, type_immunity = true, status_immunity = true,
+  inflict_status = true, heal = true, damage_self = true, set_weather = true,
+  set_terrain = true, prevent = true, change_type = true,
+  accuracy_multiplier = true, priority_change = true, crit_change = true,
+  other = true,
+}
+
+local withBehaviour, expressible, badField = 0, 0, {}
+for id in pairs(index) do
+  local b = (abilityFor(id) or {}).behaviour
+  if b then
+    withBehaviour = withBehaviour + 1
+    if b.expressible then expressible = expressible + 1 end
+    if not TRIGGERS[b.trigger] then badField[#badField + 1] = id .. ".trigger" end
+    if not SCOPES[b.scope] then badField[#badField + 1] = id .. ".scope" end
+    if type(b.chance) ~= "number" then badField[#badField + 1] = id .. ".chance" end
+    for _, effect in ipairs(b.effects or {}) do
+      if not KINDS[effect.kind] then
+        badField[#badField + 1] = id .. ".kind=" .. tostring(effect.kind)
+      end
+    end
+    -- The rule that keeps the flag meaningful: an admitted gap must say what
+    -- the gap IS, or it is indistinguishable from a shrug.
+    if b.expressible == false and (b.notes or "") == "" then
+      badField[#badField + 1] = id .. " (unexpressible with no notes)"
+    end
+  end
+end
+T.eq(withBehaviour, count, "every ability carries a behaviour record")
+T.check(expressible > 100, "a substantial share are fully expressible ("
+  .. expressible .. ")")
+T.check(expressible < withBehaviour, "and some are honestly marked as not ("
+  .. (withBehaviour - expressible) .. ")")
+T.eq(#badField, 0, "every field is inside the closed vocabulary ("
+  .. (#badField > 0 and table.concat(badField, ", "):sub(1, 90) or "all clean") .. ")")
+
+-- Spot-checked against abilities whose behaviour is not in dispute, so a
+-- regression in the curation shows up as a wrong VALUE rather than only as a
+-- schema violation -- which is the failure a vocabulary check cannot see.
+local intimidate = abilityFor("INTIMIDATE")
+T.eq(intimidate.behaviour.trigger, "switch_in", "Intimidate fires on switch-in")
+T.eq(intimidate.behaviour.scope, "foes", "against the opposing side")
+T.eq(intimidate.behaviour.effects[1].kind, "stat_change", "lowering a stat")
+T.eq(intimidate.behaviour.effects[1].stat, "attack", "Attack")
+T.eq(intimidate.behaviour.effects[1].stages, -1, "by one stage")
+
+local solar = abilityFor("SOLARPOWER")
+T.eq(#solar.behaviour.effects, 2,
+  "Solar Power carries BOTH its effects -- the boost and the cost")
+
+local regen = abilityFor("REGENERATOR")
+T.eq(regen.behaviour.trigger, "switch_out", "Regenerator fires on switching out")
+T.eq(regen.behaviour.effects[1].kind, "heal", "and heals")
+
 T.finish("national_dex_abilities")

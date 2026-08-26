@@ -3,6 +3,20 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.30.0
+
+### Added
+
+- **Every ability now carries a `behaviour` block an engine can switch on.** 0.29.0 shipped the prose; this reads it. Each record gains a trigger (`switch_in`, `on_contact_taken`, `passive`, `on_weather`, fifteen in all), a scope (`self`, `foes`, `field`, …), a chance, and a list of effects drawn from a closed set of seventeen kinds -- `stat_change`, `stat_multiplier`, `type_immunity`, `inflict_status`, `heal`, `set_weather`, `damage_dealt_multiplier` and the rest. Intimidate is `switch_in` / `foes` / `stat_change attack -1`. Solar Power carries BOTH of its effects, the Sp.Atk boost and the eighth of max HP it costs each turn.
+- **`expressible`, which is the field that makes the rest trustworthy.** 143 of the 313 are fully captured by the vocabulary. The other 170 say so, with a note naming the gap: form changes (Stance Change, Zen Mode), move redirection (Storm Drain), ability suppression (Mold Breaker, Neutralizing Gas), stat-STAGE arithmetic rather than stat values (Simple), critical-hit DAMAGE rather than rate (Sniper). A false there tells an implementer to read `effect` and stop trusting the fields, which is worth more than a plausible guess.
+- **The vocabularies are closed, and validated at build time.** A trigger, scope, effect kind, stat, status, type, weather or terrain outside the list is rejected and reported rather than passed through -- the whole value of a fixed set is that a consumer can switch on it without defensive checks, and one silently-admitted typo undoes that for everybody at once. A suite re-checks all 313 against the same vocabulary, and spot-checks values rather than only shapes, so a wrong stat name fails as loudly as a malformed record.
+
+### Notes
+
+- The curation was done by reading, not by regex. `build_abilities.py` still derives nothing from prose on its own; the structured pass lives beside it in a data file, so a reviewer can argue with any single record without touching the builder. The prose stays the source of truth in every case.
+- PokeAPI's own `short_effect` for Cotton Down is garbled upstream -- it describes a different ability entirely -- and the record's notes say so. The full `effect` text is correct and was used instead.
+- Two abilities carry an empty effects list on purpose: Honey Gather and Illuminate do nothing whatever in battle, and PokeAPI says as much. An empty list is the complete expression there; inventing a placeholder mechanic to satisfy a schema rule would have been the wrong fix.
+
 ## 0.29.0
 
 ### Added
