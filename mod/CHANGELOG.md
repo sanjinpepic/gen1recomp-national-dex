@@ -3,6 +3,18 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.32.0
+
+### Added
+
+- **Moves now say whether they make contact, and thirty-seven other things about themselves.** `moveFlags("THUNDERPUNCH")` answers `{ contact = true, punch = true, protect = true, mirror = true, metronome = true }` -- the flag set an ability like Rough Skin or Iron Barbs, an item like Rocky Helmet, or a type like Soundproof has to consult before it can do anything at all. 826 of this mod's 833 moves carry a record; 266 of them make contact. The other seven are named by the reference and given no flags by it, so they are absent rather than written as false: a move with none and a move nobody asked about are different answers and should not look alike.
+- **The data comes from a second source, and keeps its own file.** PokeAPI carries no move flags whatsoever -- `/move/<id>` has no contact field, its `meta` block has no room for one, and none of that API's fifty endpoints is a flag resource. So the flags arrive from the reference the devkit already fetches and already trusts to fact-check hand-written move metadata, and land in `data/moves/generated/flags.lua` alone. They are merged onto the move records at load rather than baked into the registries, which is what lets either builder be re-run without silently discarding the other's work. The merge is additive: a flag never replaces a field the registry owns.
+- **`moveFlags` is a separate lookup, not a field on `moveById`.** `moveById` reads the sharded `api/` tree the PokeAPI builder writes, and these flags are not its to carry. Keeping the two apart is the same reason the payload is its own file. The reply is a copy, like every other reply in that API.
+
+### Changed
+
+- **API version 5 -> 6.** Additive: nothing below 6 changed meaning, and a consumer that never asks for flags is unaffected whether or not the payload is even installed. Check `>= 6`, never `== 6`.
+
 ## 0.31.1
 
 ### Fixed
