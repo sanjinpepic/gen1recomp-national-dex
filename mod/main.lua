@@ -175,6 +175,28 @@ return function(mod)
   local movePayload = loadOptionalSibling(mod,
     "data/moves/generated/registry_gen" .. (generation == 2 and 2 or 1) .. ".lua")
   if movePayload then
+    -- Per-move FLAGS (contact, sound, punch, ...), merged onto the records
+    -- the registry above already carries.  A SEPARATE payload with a separate
+    -- owner: PokeAPI carries no move flags at all, so tools/build_move_flags.py
+    -- imports them from the reference tools/verify_move_meta.py already trusts
+    -- and writes them alone.  Merging here rather than at build time is what
+    -- lets either tool be re-run without discarding the other's work.
+    --
+    -- Additive only: a flag never replaces a field the registry owns, and a
+    -- move the reference does not name simply keeps no flags -- which is why
+    -- `flags` is absent rather than empty on those, so a reader can tell "no
+    -- flags" from "not asked about".  A missing file costs the flags and
+    -- nothing else, like every other optional sibling here.
+    local flagPayload = loadOptionalSibling(mod,
+      "data/moves/generated/flags.lua")
+    if type(flagPayload) == "table" and type(movePayload.moves) == "table" then
+      for id, record in pairs(movePayload.moves) do
+        local flags = flagPayload[id]
+        if type(record) == "table" and type(flags) == "table" then
+          record.flags = flags
+        end
+      end
+    end
     local Moves = loadSibling(mod, "src/moves.lua")
     if Moves then
       Moves(mod, movePayload, generation, widenMoves, display)

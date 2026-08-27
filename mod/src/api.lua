@@ -36,7 +36,12 @@ local M = {}
 --    them.  Additive in the same way: nothing below 4 changed meaning.
 -- 5: added itemById / listItems and the sharded item catalogue behind them.
 --    Additive again; nothing below 5 changed meaning.
-M.API_VERSION = 5
+-- 6: added moveFlags, backed by data/moves/generated/flags.lua -- the per-move
+--    flag set (contact, sound, punch, ...) that PokeAPI does not carry and
+--    tools/build_move_flags.py imports separately.  Additive again: no field
+--    below 6 changed meaning, and a consumer that never asks for flags is
+--    unaffected whether or not that payload is even installed.
+M.API_VERSION = 6
 
 -- ------------------------------------------------------------- extras load
 --
@@ -559,6 +564,32 @@ function M.install(mod)
   mod.exports.moveById = function(id)
     if type(id) ~= "string" then return nil end
     local record = moveFor(id)
+    if type(record) ~= "table" then return nil end
+    return deepCopy(record)
+  end
+
+  -- moveFlags("THUNDERPUNCH") -> { contact = true, punch = true, ... }, or nil
+  -- for a move this mod has no flag record for.
+  --
+  -- A SEPARATE lookup from moveById rather than a field on its reply: the two
+  -- payloads have different owners.  moveById reads the sharded api/ tree that
+  -- tools/build_moves.py writes from PokeAPI, which carries no move flags at
+  -- all; the flags come from tools/build_move_flags.py and its own file, so
+  -- either tool can be re-run without discarding the other's output.
+  --
+  -- nil and {} mean different things and both are real answers: nil is "no
+  -- record" (the payload is absent, or the reference never named this move),
+  -- {} never occurs -- a move the reference names but gives no flags is simply
+  -- absent from the file. A COPY, like every other reply here, so a caller
+  -- cannot edit this mod's own table.
+  local moveFlagPayload = nil
+  mod.exports.moveFlags = function(id)
+    if type(id) ~= "string" then return nil end
+    if moveFlagPayload == nil then
+      moveFlagPayload = loadDataModule(mod, "data/moves/generated/flags.lua") or false
+    end
+    if not moveFlagPayload then return nil end
+    local record = moveFlagPayload[id]
     if type(record) ~= "table" then return nil end
     return deepCopy(record)
   end
