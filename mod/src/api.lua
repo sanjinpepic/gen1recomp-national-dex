@@ -27,6 +27,9 @@
 
 local M = {}
 
+-- 1: statsBySpecies / statsByDex / listSpecies / formsOf -- the original
+--    surface. main.lua also publishes hasSplitStats / splitStats, which
+--    predate this number and sit outside it.
 -- 2: added moveById / listMoves and the sharded move payload behind them.
 -- 3: added evolutionsOf / listEvolutions and the sharded evolution payload
 --    behind them.  Nothing that existed at 1 or 2 changed meaning, so a
