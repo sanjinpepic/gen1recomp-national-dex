@@ -49,7 +49,9 @@ local M = {}
 -- 8: patch also takes `evolution`, and ten engine-only kinds it forwards
 --    whole (typeChart, moveEffect, status, encounter, trainer,
 --    growthRate, text, itemEffect, ball, evolutionMethod).  Additive.
-M.API_VERSION = 8
+-- 9: added itemFlags, the structured facts PokeAPI's catalogue carries
+--    only as English.  Additive.
+M.API_VERSION = 9
 
 -- ------------------------------------------------------------- extras load
 --
@@ -478,7 +480,7 @@ function M.install(mod)
   -- withExtras, so patch("species", "CHARIZARD_MEGA_X", ...) already reaches it.
   local PATCH_KINDS = {
     species = true, move = true, ability = true, item = true,
-    moveFlags = true, evolution = true,
+    moveFlags = true, evolution = true, itemFlags = true,
   }
 
   -- Kinds this mod does NOT report, forwarded whole to the engine registry
@@ -714,6 +716,30 @@ function M.install(mod)
     local record = moveFlagPayload[id]
     if type(record) ~= "table" then return nil end
     return applyPatches("moveFlags", id, deepCopy(record))
+  end
+
+  -- itemFlags("CHARIZARDITEX") -> { megaStone = { Charizard = "Charizard-Mega-X" },
+  -- itemUser = { "Charizard" }, ... }, or nil for an item with no facts.
+  --
+  -- FACTS, not behaviour, and the distinction is the whole design: an item
+  -- that DOES something is an item_effects `use` function on the engine's own
+  -- registry, which no data file can hold.  What lives here is what a peer
+  -- would otherwise have to read out of English -- the fling power, the mega
+  -- pairing, whether it is a berry, which species may hold it.
+  --
+  -- Separate from itemById for the same reason moveFlags is separate from
+  -- moveById: the catalogue is PokeAPI's and this is not, so either builder
+  -- can re-run without discarding the other.  A COPY, like every reply here.
+  local itemFlagPayload = nil
+  mod.exports.itemFlags = function(id)
+    if type(id) ~= "string" then return nil end
+    if itemFlagPayload == nil then
+      itemFlagPayload = loadDataModule(mod, "data/items/generated/flags.lua") or false
+    end
+    if not itemFlagPayload then return nil end
+    local record = itemFlagPayload[id]
+    if type(record) ~= "table" then return nil end
+    return applyPatches("itemFlags", id, deepCopy(record))
   end
 
   -- Every move id this mod carries data for, sorted.  Deliberately thin for
