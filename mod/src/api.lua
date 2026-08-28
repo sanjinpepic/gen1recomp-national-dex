@@ -46,7 +46,10 @@ local M = {}
 --    unaffected whether or not that payload is even installed.
 -- 7: added patch(kind, id, partial) -- a peer overrides what this mod
 --    reports, sparsely, with the dex data as the floor.  Additive.
-M.API_VERSION = 7
+-- 8: patch also takes `evolution`, and ten engine-only kinds it forwards
+--    whole (typeChart, moveEffect, status, encounter, trainer,
+--    growthRate, text, itemEffect, ball, evolutionMethod).  Additive.
+M.API_VERSION = 8
 
 -- ------------------------------------------------------------- extras load
 --
@@ -470,8 +473,23 @@ function M.install(mod)
   -- (abilities, egg groups, EV yield) -- for base stats and move power the
   -- engine's own mod.content.pokemon:patch / mod.content.moves:patch already
   -- work and need no dependency on this mod at all.
+  -- Kinds this mod REPORTS, so patching one changes what it answers.
+  -- formsOf needs no kind of its own: every form it returns goes through
+  -- withExtras, so patch("species", "CHARIZARD_MEGA_X", ...) already reaches it.
   local PATCH_KINDS = {
-    species = true, move = true, ability = true, item = true, moveFlags = true,
+    species = true, move = true, ability = true, item = true,
+    moveFlags = true, evolution = true,
+  }
+
+  -- Kinds this mod does NOT report, forwarded whole to the engine registry
+  -- that owns them. They are here so a modder has ONE door rather than two:
+  -- mod.content.<x>:patch stays available and needs no dependency on this
+  -- mod, but nobody has to remember which side of the line a thing sits on.
+  local ENGINE_ONLY = {
+    typeChart = "type_chart", moveEffect = "move_effects",
+    status = "statuses", encounter = "encounters", trainer = "trainers",
+    growthRate = "growth_rates", text = "text", itemEffect = "item_effects",
+    ball = "balls", evolutionMethod = "evolution_methods",
   }
   local patches = {}
 
@@ -589,9 +607,17 @@ function M.install(mod)
   mod.exports.patch = function(first, second, third, fourth)
     local kind, id, partial = first, second, third
     if kind == mod.exports then kind, id, partial = second, third, fourth end
-    if not PATCH_KINDS[kind] or type(id) ~= "string" or type(partial) ~= "table" then
-      return false
+    if type(id) ~= "string" or type(partial) ~= "table" then return false end
+    -- An engine-only kind is a straight forward: nothing here reads it, so
+    -- there is no local half to keep and no field to split.
+    local direct = ENGINE_ONLY[kind]
+    if direct then
+      local registry = mod.content and mod.content[direct]
+      if not registry or type(registry.patch) ~= "function" then return false end
+      local ok = pcall(function() registry:patch(id, partial) end)
+      return ok
     end
+    if not PATCH_KINDS[kind] then return false end
     patches[kind] = patches[kind] or {}
     patches[kind][id] = patches[kind][id] or {}
     table.insert(patches[kind][id], deepCopy(partial))
@@ -792,7 +818,7 @@ function M.install(mod)
     end
     local found = evolutionFor(id)
     if type(found) ~= "table" then return nil end
-    return deepCopy(found)
+    return applyPatches("evolution", id, deepCopy(found))
   end
 
   -- Every id this mod carries evolution data for, sorted -- the 1025 species
