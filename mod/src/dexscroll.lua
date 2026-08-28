@@ -167,6 +167,87 @@ end
 -- The wrap is written onto the INSTANCE, never onto ListMenu: the bag, the
 -- shops, the PC and the box are all the same class, and none of them asked
 -- for this.
+-- ------------------------------------------- a screen that counts nothing
+--
+-- src/ui/PokedexMenu.lua was a ListMenu until engine 48d8a4e9 (2026-08-27)
+-- rewrote it as its own class.  It kept its cursor, its scroll sync and its
+-- page jump; what it lost was the machinery accelerate() below leans on --
+-- holdFrames, keyRepeat, repeatDelay/repeatRate.  Its update now reads edges
+-- and nothing else, so there is no counter to write a tier into and the whole
+-- feature simply stopped applying to the Gen 1 dex.
+--
+-- WHAT THIS DOES NOT DO IS REIMPLEMENT THE MOVEMENT.  The reason accelerate()
+-- writes a field instead of moving a cursor is that navPressed owns wrap,
+-- clamping and the scroll sync, and a copy of it is how a held direction and
+-- a tapped one end up disagreeing about the ends of a list.  That reasoning
+-- did not change when the counter went away -- so this counts the frames the
+-- screen no longer counts, and then hands the work back by calling the
+-- screen's OWN update behind an input that reports the held direction as
+-- freshly pressed.  Every row it crosses is moved by the same branch a tap
+-- moves, through the same syncScroll and the same pageScroll clamp.  A tap
+-- and a hold cannot drift apart here because there is only one of them.
+--
+-- The proxy forwards everything else to the real input untouched, so a screen
+-- reading some other button on that pass sees the truth about it; only
+-- wasPressed(dir) is answered, and only on a frame the tier says to repeat.
+local DIRECTIONS = { "up", "down", "left", "right" }
+
+local function edgeProxy(input, dir)
+  return setmetatable({}, { __index = function(_, key)
+    if key == "wasPressed" then
+      return function(_, button) return button == dir end
+    end
+    local value = input[key]
+    if type(value) == "function" then
+      return function(_, ...) return value(input, ...) end
+    end
+    return value
+  end })
+end
+
+local function driveByEdge(list, profile)
+  if type(list) ~= "table" or type(list.update) ~= "function" then return false end
+  if type(list.game) ~= "table" or type(list.game.input) ~= "table" then
+    return false
+  end
+  local originalUpdate = list.update
+  local dir, frames = nil, 0
+  list.update = function(self, dt)
+    originalUpdate(self, dt)
+    local input = self.game and self.game.input
+    if type(input) ~= "table" or type(input.isDown) ~= "function" then
+      dir, frames = nil, 0
+      return
+    end
+    local down = nil
+    for i = 1, #DIRECTIONS do
+      if input:isDown(DIRECTIONS[i]) then down = DIRECTIONS[i] break end
+    end
+    if down == nil then dir, frames = nil, 0 return end
+    -- A fresh EDGE restarts the count, the same thing ListMenu.lua:205-215
+    -- does when it sets holdDir/holdFrames on wasPressed.  Keying off the
+    -- edge rather than off "the direction changed" is what makes a second
+    -- hold of the SAME direction start over: the key came up in between, and
+    -- a counter that kept running through that would arrive at its first
+    -- repeat before the player had held anything.
+    local edged = type(input.wasPressed) == "function" and input:wasPressed(down)
+    if edged or down ~= dir then dir, frames = down, 1 return end
+    frames = frames + 1
+    -- LEFT and RIGHT do not move a row on these screens, they move a whole
+    -- window, so they are clocked by PAGE rather than by the row profile --
+    -- the same split accelerate() makes below, for the same reason.
+    local held = (dir == "left" or dir == "right") and M.PAGE or profile
+    local after = frames - M.delay(held)
+    if after < 0 or after % M.rate(held, frames) ~= 0 then return end
+    local real = self.game.input
+    self.game.input = edgeProxy(real, dir)
+    local ok, err = pcall(originalUpdate, self, dt)
+    self.game.input = real
+    if not ok then error(err, 0) end
+  end
+  return true
+end
+
 local function accelerate(list, profile)
   -- Only what this actually needs: an update to wrap, and the held-frame
   -- counter it reads.  repeatDelay/repeatRate used to be required as numbers
@@ -175,9 +256,13 @@ local function accelerate(list, profile)
   -- carries nil and was refused for lacking the very fields this was about to
   -- write.  A precondition on a value you are about to overwrite can only
   -- reject; it can never protect.
-  if type(list) ~= "table" or type(list.update) ~= "function"
-    or type(list.holdFrames) ~= "number" then
+  if type(list) ~= "table" or type(list.update) ~= "function" then
     return false
+  end
+  -- A screen with no held-frame counter of its own is driven by edges
+  -- instead; see driveByEdge above for why that is not a second cursor.
+  if type(list.holdFrames) ~= "number" then
+    return driveByEdge(list, profile)
   end
   list.keyRepeat = true
   list.repeatDelay = M.delay(profile)
