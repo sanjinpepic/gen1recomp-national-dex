@@ -14307,7 +14307,7 @@ return {
     },
     SIRFETCHD = {
       id = "SIRFETCHD",
-      name = "Sirfetch’d",
+      name = "Sirfetch'd",
       dex = 865,
       types = { "FIGHTING" },
       baseStats = { attack = 135, defense = 95, hp = 62, special = 82, speed = 65 },
