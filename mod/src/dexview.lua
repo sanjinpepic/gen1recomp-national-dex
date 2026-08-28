@@ -271,8 +271,23 @@ function M.describe(game)
     and dex.owned or {}
   local caught = type(dex) == "table" and type(dex.caught) == "table"
     and dex.caught or {}
-  local rows = {}
+  -- The engine stops the listing at the highest number the player has SEEN,
+  -- not at the end of the roster -- engine/menus/pokedex.asm:200-216, which
+  -- src/ui/PokedexMenu.lua started honouring on 2026-08-27 (its `maxSeen`).
+  -- Describing every claimed number instead made this disagree with the list
+  -- it is describing by exactly the rows past the frontier, and a mismatch is
+  -- what makes the view modes stand down: reordering a list this did not
+  -- build would put the wrong species under the cursor.
+  local maxSeen = 0
   for n = 1, size do
+    local def = byDex[n]
+    if type(def) == "table"
+      and (owned[def.id] or caught[def.id] or seen[def.id]) then
+      maxSeen = n
+    end
+  end
+  local rows = {}
+  for n = 1, math.min(size, maxSeen) do
     local def = byDex[n]
     if type(def) == "table" then
       rows[#rows + 1] = {
