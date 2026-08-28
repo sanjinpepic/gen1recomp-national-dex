@@ -3,6 +3,18 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.35.1
+
+### Fixed
+
+- **Hold-to-scroll works on the Pokédex again.** The engine rewrote its dex list from a `ListMenu` into its own class and dropped the held-frame counter this mod wrote its tiers into, so holding UP or DOWN moved one row and stopped. It had been saying so only through `mod.log:info`, which the fused launcher swallows.
+- **The frames are counted here now, and the moving is still the engine's.** On a repeat frame the screen's own `update` is called behind an input reporting the held direction as freshly pressed, so every row crossed goes through the same branch a tap goes through -- the cursor arithmetic, the clamping, the scroll sync and the page jump are all untouched. A tap and a hold cannot drift apart because only one of them exists. Lists that still carry the counter keep the old path.
+- **The dex search no longer describes rows the listing does not have.** The engine stops the list at the highest number seen; `describe()` still walked every claimed number, so it disagreed with the list it describes by exactly the rows past that frontier -- and a mismatch is what makes the view modes stand down.
+
+### Notes
+
+- `wrap` and `onSelectKey` are gone from that screen too, and a neighbour that sets them is affected whether or not this mod is loaded. Restoring them belongs upstream; the suites pin today's behaviour so it is visible when they return.
+
 ## 0.35.0
 
 ### Added
