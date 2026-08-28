@@ -3,6 +3,17 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.34.0
+
+### Added
+
+- **`patch` now covers everything this mod can be asked about, and ten things it cannot.** Six kinds it reports -- `species`, `move`, `ability`, `item`, `moveFlags`, `evolution` -- plus `typeChart`, `moveEffect`, `status`, `encounter`, `trainer`, `growthRate`, `text`, `itemEffect`, `ball` and `evolutionMethod`, which it forwards whole to the engine registry that owns them. Sixteen kinds, one call, so nobody has to know which side of the line a thing sits on.
+- `evolution` closes the one real gap: `evolutionsOf` could be read but not overridden, which is exactly the inconsistency the hook exists to remove. `formsOf` needed nothing -- every form it returns already goes through the species path.
+
+### Changed
+
+- **API version 7 -> 8.** Additive. Check `>= 8`, never `== 8`.
+
 ## 0.33.0
 
 ### Added
