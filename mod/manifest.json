@@ -1,7 +1,7 @@
 {
   "id": "national_dex",
   "name": "National Dex",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",

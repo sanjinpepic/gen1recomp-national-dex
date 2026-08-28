@@ -3,6 +3,19 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.35.0
+
+### Added
+
+- **`itemFlags(id)` -- the structured half of what an item is.** The catalogue describes 2222 items in English ("Held: Heals the holder by 1/16 its max HP at the end of each turn"), so a mod that wanted the number had to parse prose. 530 items now answer with facts instead: fling power, mega pairing, berry, natural gift, plate/memory/drive type, which species may hold it, 21 fields in all.
+- **Facts, never behaviour.** An item that DOES something is an `item_effects` `use` function on the engine's own registry, and no data file can hold a function. Describing behaviour here would mean an interpreter turning `{heal = "1/16", when = "endOfTurn"}` into a real hook -- a second effect system beside the one that already runs. So this ships what an item IS and leaves what it does where it belongs.
+- **Its own payload, like move flags.** PokeAPI carries none of this, so it comes from the reference the devkit already fetches, into `data/items/generated/flags.lua` alone. Either builder can re-run without discarding the other's work.
+- `itemFlags` is also a patch kind, so a peer can override a fact the same way it overrides anything else.
+
+### Changed
+
+- **API version 8 -> 9.** Additive. Check `>= 9`, never `== 9`.
+
 ## 0.34.0
 
 ### Added
