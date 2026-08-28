@@ -168,8 +168,14 @@ end
 -- shops, the PC and the box are all the same class, and none of them asked
 -- for this.
 local function accelerate(list, profile)
+  -- Only what this actually needs: an update to wrap, and the held-frame
+  -- counter it reads.  repeatDelay/repeatRate used to be required as numbers
+  -- too -- but they are ASSIGNED two lines below, and ListMenu only sets them
+  -- from opts (ListMenu.lua:71-72), so a list whose caller passes neither
+  -- carries nil and was refused for lacking the very fields this was about to
+  -- write.  A precondition on a value you are about to overwrite can only
+  -- reject; it can never protect.
   if type(list) ~= "table" or type(list.update) ~= "function"
-    or type(list.repeatDelay) ~= "number" or type(list.repeatRate) ~= "number"
     or type(list.holdFrames) ~= "number" then
     return false
   end

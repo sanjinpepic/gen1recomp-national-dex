@@ -291,6 +291,25 @@ function M.describe(game)
 end
 local describe = M.describe
 
+-- The row count, whichever shape this engine keeps it in.
+--
+-- It was a plain field when this was written and became a method on
+-- 2026-08-27 (src/ui/PokedexMenu.lua's `function PokedexMenu:rows()`).  The
+-- guard below asked for a number, so from that build onward it answered "not
+-- this engine's own list" about the engine's OWN list: the view modes stood
+-- down on every boot, START did nothing, and the only thing that said so was
+-- an info line the fused launcher swallows.  A shape check that cannot pass
+-- is worse than no check, because it fails quietly and looks deliberate.
+local function rowCount(list)
+  local value = type(list) == "table" and list.rows or nil
+  if type(value) == "number" then return value end
+  if type(value) == "function" then
+    local ok, count = pcall(value, list)
+    if ok and type(count) == "number" then return count end
+  end
+  return nil
+end
+
 local function augment(list, mod)
   local modules = requireAll()
   if not modules then
@@ -306,7 +325,7 @@ local function augment(list, mod)
   if type(list) ~= "table" or type(list.items) ~= "table"
     or type(list.update) ~= "function" or type(list.draw) ~= "function"
     or type(list.index) ~= "number" or type(list.scroll) ~= "number"
-    or type(list.rows) ~= "number"
+    or rowCount(list) == nil
     or type(game) ~= "table" or type(game.data) ~= "table"
     or type(game.data.pokemon) ~= "table" then
     report(mod, "the Pokédex listing is not this engine's own list -- view "
@@ -376,7 +395,7 @@ local function augment(list, mod)
     local position = M.cursorFor(view, rows, target)
     self.items = items
     self.index = position
-    self.scroll = M.scrollFor(position, screenRow, #items, self.rows)
+    self.scroll = M.scrollFor(position, screenRow, #items, rowCount(self) or 0)
     mode, current = wanted, view
     return true
   end
