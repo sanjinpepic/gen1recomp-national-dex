@@ -3,6 +3,19 @@
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
+## 0.33.0
+
+### Added
+
+- **A mod can now override what the dex says, without editing it.** `patch(kind, id, partial)` takes the same vocabulary you fetch with -- `species`, `move`, `ability`, `item`, `moveFlags` -- and changes only the keys you name. Everything else falls through to the dex. `patch("species", "GLACEON", { abilities = { { name = "Slush Rush" } } })` gives Glaceon a different ability and touches nothing else about it, or about any other species.
+- **One call, whether the field is ours or the engine's.** Base stats, types and move power live in the engine's registries, not here; abilities, egg groups and move flags live here. `patch` splits a partial by asking the engine record which fields it actually has, forwards that half to `mod.content.<x>:patch`, and keeps the rest. A caller writes one line either way and does not have to know where a field lives.
+- **Nothing is overwritten and nothing is lost.** Patches are ops held in memory for the load, exactly like the engine's own registries -- no generated file is rewritten and nothing reaches the save. Remove the mod that registered a patch and the dex answers as it always did, with no cleanup step. A partial can add or replace, never delete: a key you do not name keeps its dex value.
+- Maps merge key by key, lists replace whole. `{ effect = { flinch = 10 } }` sets `flinch` and leaves the rest of the effect standing; `{ abilities = { ... } }` replaces the ability list outright.
+
+### Changed
+
+- **API version 6 -> 7.** Additive. Check `>= 7`, never `== 7`.
+
 ## 0.32.0
 
 ### Added

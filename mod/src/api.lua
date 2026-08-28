@@ -44,7 +44,9 @@ local M = {}
 --    tools/build_move_flags.py imports separately.  Additive again: no field
 --    below 6 changed meaning, and a consumer that never asks for flags is
 --    unaffected whether or not that payload is even installed.
-M.API_VERSION = 6
+-- 7: added patch(kind, id, partial) -- a peer overrides what this mod
+--    reports, sparsely, with the dex data as the floor.  Additive.
+M.API_VERSION = 7
 
 -- ------------------------------------------------------------- extras load
 --
@@ -310,6 +312,23 @@ end
 -- to find that out.  Functions are dropped; nothing on a species record
 -- should be callable, and passing one across the mod boundary would hand out
 -- an upvalue closure over our own state.
+-- Sparse overlay: every key the partial names replaces, everything else is
+-- left standing.  A partial can only add or replace -- a Lua table cannot
+-- carry a nil, so this can never delete a field the dex owns.
+local function deepMerge(base, partial)
+  if type(partial) ~= "table" then return partial end
+  if type(base) ~= "table" then base = {} end
+  for key, value in pairs(partial) do
+    if type(value) == "table" and type(base[key]) == "table"
+        and #value == 0 and #base[key] == 0 then
+      base[key] = deepMerge(base[key], value)   -- maps merge
+    else
+      base[key] = value                          -- lists and scalars replace
+    end
+  end
+  return base
+end
+
 local function deepCopy(value, seen)
   if type(value) ~= "table" then return value end
   seen = seen or {}
@@ -439,6 +458,32 @@ function M.install(mod)
   -- shard.  Takes and returns the shaped table so call sites can wrap
   -- M.shape(...) inline; passes nil straight through so a caller never has
   -- to null-check twice.
+  -- PATCHES: a peer says what it wants different, the dex stays the floor.
+  --
+  -- Ops live here in memory for the life of the load, exactly like the
+  -- engine's own content registries: nothing is written back to a generated
+  -- file or into the save, so removing the mod that registered a patch
+  -- removes the patch with it and the dex answers as it always did.
+  --
+  -- Kinds are the read API's own vocabulary, so a caller overrides a thing
+  -- the same way it fetches it.  `species` reaches the extras this mod owns
+  -- (abilities, egg groups, EV yield) -- for base stats and move power the
+  -- engine's own mod.content.pokemon:patch / mod.content.moves:patch already
+  -- work and need no dependency on this mod at all.
+  local PATCH_KINDS = {
+    species = true, move = true, ability = true, item = true, moveFlags = true,
+  }
+  local patches = {}
+
+  local function applyPatches(kind, id, value)
+    local ops = patches[kind] and patches[kind][id]
+    if not ops or value == nil then return value end
+    for _, partial in ipairs(ops) do
+      value = deepMerge(value, deepCopy(partial))
+    end
+    return value
+  end
+
   local function withExtras(shaped)
     if not shaped then return nil end
     local extras = extrasFor(shaped.id)
@@ -447,7 +492,9 @@ function M.install(mod)
         shaped[key] = value
       end
     end
-    return shaped
+    -- Last, so a peer overrides the finished record rather than one layer of
+    -- it: what a caller patches is what a caller reads.
+    return applyPatches("species", shaped.id, shaped)
   end
 
   -- Built once, on the first call rather than at load: the registry is still
@@ -505,6 +552,52 @@ function M.install(mod)
   end
 
   -- --- the published surface
+
+  -- patch("species", "GLACEON", { abilities = { { name = "Slush Rush" } } })
+  -- Returns true when recorded, false for a kind or id this does not know.
+  -- Ops accumulate in registration order; the last one to name a key wins.
+  --
+  -- ONE CALL FOR EVERYTHING.  Some of what a caller wants to change is this
+  -- mod's (abilities, egg groups, flags); some is the engine's and would
+  -- otherwise need mod.content.pokemon:patch instead (base stats, types,
+  -- move power).  Making a caller know which is which is a worse API than
+  -- routing it here, so this forwards the half the engine owns and keeps the
+  -- half this mod owns, and the caller writes one line either way.
+  --
+  -- Which half is decided by asking the engine record what fields it HAS,
+  -- rather than by a list here that would rot as records change.  The whole
+  -- partial is kept locally too, so this mod's own replies report every key
+  -- whether or not the engine also took one.
+  local FORWARD = { species = "pokemon", move = "moves", item = "items" }
+
+  local function forwardToEngine(kind, id, partial)
+    local target = FORWARD[kind]
+    local registry = target and mod.content and mod.content[target]
+    if not registry or type(registry.patch) ~= "function" then return end
+    local ok, live = pcall(function() return registry:get(id) end)
+    if not ok or type(live) ~= "table" then return end
+    local engineHalf, any = {}, false
+    for key, value in pairs(partial) do
+      if live[key] ~= nil then engineHalf[key] = value any = true end
+    end
+    -- Never fatal to the caller: content freezes after load, so a patch
+    -- registered late is refused by the engine rather than by us, and the
+    -- local half still stands.
+    if any then pcall(function() registry:patch(id, engineHalf) end) end
+  end
+
+  mod.exports.patch = function(first, second, third, fourth)
+    local kind, id, partial = first, second, third
+    if kind == mod.exports then kind, id, partial = second, third, fourth end
+    if not PATCH_KINDS[kind] or type(id) ~= "string" or type(partial) ~= "table" then
+      return false
+    end
+    patches[kind] = patches[kind] or {}
+    patches[kind][id] = patches[kind][id] or {}
+    table.insert(patches[kind][id], deepCopy(partial))
+    forwardToEngine(kind, id, partial)
+    return true
+  end
 
   mod.exports.apiVersion = M.API_VERSION
 
@@ -568,7 +661,7 @@ function M.install(mod)
     if type(id) ~= "string" then return nil end
     local record = moveFor(id)
     if type(record) ~= "table" then return nil end
-    return deepCopy(record)
+    return applyPatches("move", id, deepCopy(record))
   end
 
   -- moveFlags("THUNDERPUNCH") -> { contact = true, punch = true, ... }, or nil
@@ -594,7 +687,7 @@ function M.install(mod)
     if not moveFlagPayload then return nil end
     local record = moveFlagPayload[id]
     if type(record) ~= "table" then return nil end
-    return deepCopy(record)
+    return applyPatches("moveFlags", id, deepCopy(record))
   end
 
   -- Every move id this mod carries data for, sorted.  Deliberately thin for
@@ -629,7 +722,7 @@ function M.install(mod)
     if type(id) ~= "string" then return nil end
     local record = abilityFor(id)
     if type(record) ~= "table" then return nil end
-    return deepCopy(record)
+    return applyPatches("ability", id, deepCopy(record))
   end
 
   -- Every ability id this mod carries data for, sorted.  Thin for the same
@@ -664,7 +757,7 @@ function M.install(mod)
     local record = itemFor(id)
     if type(record) ~= "table" then record = itemFor(id .. "HELD") end
     if type(record) ~= "table" then return nil end
-    return deepCopy(record)
+    return applyPatches("item", id, deepCopy(record))
   end
 
   -- Every item id this mod carries data for, sorted.  Thin for the same reason
