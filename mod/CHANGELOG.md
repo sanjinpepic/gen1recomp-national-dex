@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.35.5
+
+### Fixed
+
+- **Variable-power moves dealt no damage at all.** PokeAPI reports `power: null` for Heavy Slam, Gyro Ball, Metal Burst, Grass Knot, Low Kick and a dozen more -- their power is computed, not stored -- and the builder faithfully wrote 0. The engine reads 0 as "never does damage by the normal calculation" and skips the damage branch entirely, so these moves landed for nothing. They now carry a real power, the way the base game already ships Seismic Toss, Counter and Reversal at a placeholder rather than 0.
+- **The original 151 carried no weight, so weight-based moves could not work against them.** Only species this mod REGISTERS got a `dexEntry`; the cart's own 151 came through the `patch` bucket with none. Heavy Slam or Grass Knot aimed at any Kanto Pokemon therefore had no weight, no ratio, and no damage. All 151 now carry a complete dexEntry (kind, height, weight) fetched from PokeAPI -- complete because `R.pokemon`'s field spec makes most of those required, so a weight-only record is invalid rather than merely smaller.
+- `tools/build_national_dex.py` emits that dexEntry itself now, so a rebuild keeps it. Inches are rounded on the total before splitting into feet and inches -- rounding after the modulo turned Pidgey's 11.8in into 0ft 0in.
+
+
 Format: [keep a changelog](https://keepachangelog.com/en/1.1.0/).
 Version headings match `manifest.json`'s `version`.
 
