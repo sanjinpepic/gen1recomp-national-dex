@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.6
+
+### Fixed
+
+- **Stopped forcing `universal_sprites` to load first.** This mod named it in `optional_dependencies`, and the loader treats every optional entry as a real ordering edge -- so the sprite mod was pushed AHEAD of the dex whose records its art is keyed to. Nothing here needed that: `src/gen2dexlist.lua`'s `spriteArt` resolves the neighbour through a lazy, memoised `mod:find` on first draw, and its own comment already says "mod:find is nil until the other mod has run, and load order between two mods is not ours to pin."
+- The edge also closed a cycle -- national_dex -> universal_sprites -> overworld_wild_spawns -> national_dex -- and the loader's cycle-breaker then produced an order that ran `g9-battle-engine-beta` BEFORE national_dex, which is that mod's HARD dependency. Five "optional dependency loop broken" warnings at boot; now one, and that one is a pre-existing `battle_forms` <-> `g9-battle-engine-beta` pair that predates this.
+
 ## 0.35.5
 
 ### Fixed
