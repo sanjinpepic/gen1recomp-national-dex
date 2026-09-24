@@ -49,6 +49,21 @@ M.PRICE = 3000
 M.MART_MAP = "CeladonMart4F"
 M.MART_CLERK = "TEXT_CELADONMART4F_CLERK"
 
+-- Which generation this boot is, read the same way src/gen2shape.lua's own
+-- M.generation does and for the identical reason: `generation` is a Gen 2
+-- constant the ROM import stamps, readable before the loader runs, so it
+-- answers 2 on Gold and nil on Red/Blue/Yellow.  Duplicated rather than
+-- reached for across the mod boundary -- a mod's own files are the only
+-- ones mod:read can see -- and pcall'd because a test stub need not carry
+-- mod.content.constants at all.
+local function generationOf(mod)
+  local ok, value = pcall(function()
+    return mod.content.constants:get("generation")
+  end)
+  if ok and type(value) == "number" then return value end
+  return 1
+end
+
 -- A form pseudo-record -- both baseSpecies and form set, national_dex/
 -- src/api.lua's own test for one -- can never be a battler's mon.species:
 -- every alternate-form transformation this project makes overrides a
@@ -122,15 +137,33 @@ function M.install(mod, entries, widen)
     end
   end
 
-  -- Sold on the Celadon department store's stone floor, behind whatever a
-  -- sibling mod already put there (a "deep" registry concatenates every
-  -- mod's patch onto the same list, in whichever order the mods load --
-  -- dev/battle_forms_mod/src/shop.lua's own shelf() rests on the identical
-  -- fact). Only when there is at least one item to sell: an empty mart patch
-  -- would still be a harmless no-op, but there is nothing to say with it.
-  if #itemIds > 0 and mod.content.text_pointers then
-    mod.content.text_pointers:patch(M.MART_MAP,
-      { [M.MART_CLERK] = { mart = itemIds } })
+  -- Sold on the Celadon department store's stone floor on Gen 1, behind
+  -- whatever a sibling mod already put there (a "deep" registry
+  -- concatenates every mod's patch onto the same list, in whichever order
+  -- the mods load -- battle_forms' dev sibling src/shop.lua's own shelf()
+  -- rests on the identical fact). Only when there is at least one item to
+  -- sell: an empty mart patch would still be a harmless no-op, but there is
+  -- nothing to say with it.
+  --
+  -- Gen 1 only.  Gold has no text_pointers registry at all (Schemas.lua's
+  -- R.GEN2.text_pointers = false), so the patch is dropped and reported
+  -- rather than rerouted -- the "the text_pointers registry has no Gen 2
+  -- target" warn a Gold boot used to log.  This mod has no Gen 2 mart seam
+  -- of its own to reroute it to (the dev sibling battle_forms reaches
+  -- Gold's shelves through MartMenu.inventory; this file does not), so on
+  -- Gold these TMs register and teach but are not sold.  Said once, at
+  -- info, rather than left to the warn to say for us.
+  if #itemIds > 0 then
+    if generationOf(mod) == 2 then
+      if mod.log then
+        mod.log:info("national_dex: Gen 2 has no text_pointers registry -- "
+          .. "%d machine TM(s) registered and teachable but not sold on Gold",
+          #itemIds)
+      end
+    elseif mod.content.text_pointers then
+      mod.content.text_pointers:patch(M.MART_MAP,
+        { [M.MART_CLERK] = { mart = itemIds } })
+    end
   end
 
   if mod.log then
